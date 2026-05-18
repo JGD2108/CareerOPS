@@ -1,0 +1,11 @@
+{
+  "title": "AI Backend Engineer",
+  "company_name": "Example AI Company",
+  "description": "We are looking for an AI Backend Engineer to build Python APIs, REST services, PostgreSQL data models, Dockerized services, LLM workflows, pgvector semantic search, AWS Lambda jobs, S3 integrations, and workflow automation. Experience with Redis, Kubernetes, and LangGraph is a plus.",
+  "location": "Remote",
+  "work_mode": "Remote",
+  "seniority": "Junior / Mid",
+  "source": "manual",
+  "source_url": "https://example.com/jobs/ai-backend-engineer",
+  "create_application": true
+}

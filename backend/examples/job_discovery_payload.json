@@ -1,0 +1,17 @@
+{
+  "sources": [
+    {
+      "source": "lever",
+      "company_key": "leverdemo",
+      "company_name_override": "Lever Demo"
+    }
+  ],
+  "filters": {
+    "role_keywords": ["engineer", "backend", "software", "data"],
+    "locations": [],
+    "seniority_terms": ["junior", "mid", "senior"],
+    "work_modes": []
+  },
+  "include_description": true,
+  "create_applications": false
+}
