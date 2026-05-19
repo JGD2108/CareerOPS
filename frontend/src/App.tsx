@@ -618,10 +618,10 @@ function getRecommendationTone(value: string): string {
 
 function MetricCard(props: { label: string; value: string | number; note: string }) {
   return (
-    <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-sm font-medium text-slate-500">{props.label}</p>
-      <p className="mt-2 text-3xl font-semibold text-slate-900">{props.value}</p>
-      <p className="mt-2 text-sm text-slate-600">{props.note}</p>
+    <article className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <p className="text-xs font-semibold uppercase text-slate-500">{props.label}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-950">{props.value}</p>
+      <p className="mt-1 text-xs leading-5 text-slate-500">{props.note}</p>
     </article>
   )
 }
@@ -656,7 +656,7 @@ function ResourceBanner(props: { title: string; state: ResourceState<unknown> })
 
 function Panel(props: { title: string; subtitle?: string; children: ReactNode }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div>
         <h2 className="text-lg font-semibold text-slate-950">{props.title}</h2>
         {props.subtitle ? (
@@ -670,7 +670,7 @@ function Panel(props: { title: string; subtitle?: string; children: ReactNode })
 
 function EmptyState(props: { title: string; body: string }) {
   return (
-    <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4">
+    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
       <p className="text-sm font-medium text-slate-900">{props.title}</p>
       <p className="mt-1 text-sm text-slate-600">{props.body}</p>
     </div>
@@ -687,10 +687,10 @@ function SectionButton(props: {
     <button
       type="button"
       onClick={props.onClick}
-      className={`flex items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium transition ${
+      className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${
         props.active
-          ? 'bg-slate-900 text-white'
-          : 'text-slate-700 hover:bg-slate-100'
+          ? 'bg-slate-950 text-white shadow-sm'
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
       }`}
     >
       <span>{props.label}</span>
@@ -784,18 +784,26 @@ function SetupHome(props: {
                 <button
                   type="button"
                   onClick={props.onOpenSetup}
-                  className="rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                  disabled={!gmailReady}
+                  className="rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Upload CV and LinkedIn
+                  Set up profile
                 </button>
                 <button
                   type="button"
                   onClick={props.onEnterDashboard}
-                  className="rounded-md border border-slate-300 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                  disabled={!gmailReady}
+                  className="rounded-md border border-slate-300 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Enter dashboard
+                  {gmailReady ? 'Open workspace' : 'Dashboard locked'}
                 </button>
               </div>
+
+              {!gmailReady ? (
+                <p className="mt-3 text-sm text-slate-500">
+                  Gmail authentication is required before opening the workspace.
+                </p>
+              ) : null}
 
               {props.operationMessage ? (
                 <div className="mt-5 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
@@ -1212,6 +1220,10 @@ function App() {
   }
 
   function enterDashboard(section: AppSection = 'overview') {
+    if (!gmailStatusState.data?.authenticated) {
+      setOperationError('Sign in with Google before opening the CareerOps workspace.')
+      return
+    }
     setActiveSection(section)
     setDashboardUnlocked(true)
     window.history.replaceState(null, '', window.location.pathname)
@@ -1576,18 +1588,18 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
-      <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col gap-6 px-4 py-4 lg:px-6">
-        <header className="rounded-lg border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <div className="min-h-screen bg-[#f5f7fb] text-slate-950">
+      <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col gap-6 px-4 py-5 lg:px-6">
+        <header className="rounded-2xl bg-slate-950 px-5 py-5 text-white shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-1">
-              <p className="text-sm font-medium text-sky-700">CareerOps Agent</p>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">
-                Search operations dashboard
+              <p className="text-sm font-semibold text-sky-300">CareerOps Agent</p>
+              <h1 className="text-2xl font-semibold tracking-tight text-white">
+                Application command center
               </h1>
-              <p className="max-w-3xl text-sm text-slate-600">
-                One place to review discovery, active applications, recruiter inbox
-                signals, and the next action queue without leaving the system.
+              <p className="max-w-3xl text-sm leading-6 text-slate-300">
+                Review job discovery, active applications, recruiter inbox signals,
+                profile evidence, CV drafts, and next actions from one private workspace.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3 lg:min-w-[420px] lg:grid-cols-3">
@@ -1610,8 +1622,8 @@ function App() {
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <aside className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[248px_minmax(0,1fr)]">
+          <aside className="self-start rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-5">
             <nav className="flex flex-col gap-1">
               {DEFAULT_SECTIONS.map((section) => (
                 <SectionButton
@@ -1624,7 +1636,7 @@ function App() {
               ))}
             </nav>
 
-            <div className="mt-6 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Current profile
               </p>
