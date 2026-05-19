@@ -36,6 +36,7 @@ from app.gmail_integration import (
     list_raw_emails,
     mock_ingest_email,
     reclassify_stored_emails,
+    sync_career_gmail_messages,
     sync_linkedin_activity,
     sync_gmail_messages,
     start_gmail_web_oauth,
@@ -364,15 +365,10 @@ def finish_gmail_oauth(code: str, state: str | None = None, db: Session = Depend
     synced_email_count = 0
     linked_jobs_count = 0
     try:
-        synced_emails = sync_gmail_messages(
-            db,
-            query="category:primary newer_than:30d",
-            max_results=25,
-            skip_existing=True,
-        )
+        synced_emails = sync_career_gmail_messages(db, newer_than_days=180, max_results_per_query=25)
         linkedin_result = sync_linkedin_activity(db, newer_than_days=90, max_results=50)
         synced_email_count = len(synced_emails)
-        linked_jobs_count = linkedin_result.normalized_jobs_created
+        linked_jobs_count = linkedin_result.get("jobs_imported", 0)
     except Exception:
         post_auth_sync = "failed"
 
@@ -407,6 +403,16 @@ def sync_gmail(payload: GmailSyncRequest, db: Session = Depends(get_db)) -> list
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     except Exception as error:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gmail sync failed: {error}") from error
+
+
+@router.post("/gmail/sync-career", response_model=list[EmailRead], status_code=status.HTTP_201_CREATED)
+def sync_career_gmail(db: Session = Depends(get_db)) -> list[EmailRead]:
+    try:
+        return sync_career_gmail_messages(db, newer_than_days=180, max_results_per_query=25)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Career Gmail sync failed: {error}") from error
 
 
 @router.post("/linkedin/sync", response_model=LinkedInSyncResponse)

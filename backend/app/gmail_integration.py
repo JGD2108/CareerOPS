@@ -1143,6 +1143,63 @@ def sync_gmail_messages(
     return persisted
 
 
+def sync_career_gmail_messages(
+    db: Session,
+    *,
+    newer_than_days: int = 180,
+    max_results_per_query: int = 25,
+    skip_existing: bool = True,
+) -> list[Email]:
+    queries = [
+        f'newer_than:{newer_than_days}d "your application"',
+        f'newer_than:{newer_than_days}d "thank you for applying"',
+        f'newer_than:{newer_than_days}d "we received your application"',
+        f'newer_than:{newer_than_days}d "application received"',
+        f'newer_than:{newer_than_days}d interview',
+        f'newer_than:{newer_than_days}d assessment',
+        f'newer_than:{newer_than_days}d recruiter',
+        f'newer_than:{newer_than_days}d "coding challenge"',
+        f"from:jobalerts-noreply@linkedin.com newer_than:{newer_than_days}d",
+        f"from:jobs-noreply@linkedin.com newer_than:{newer_than_days}d",
+        f"from:notifications-noreply@linkedin.com newer_than:{newer_than_days}d",
+        f"from:greenhouse-mail.io newer_than:{newer_than_days}d",
+        f"from:greenhouse.io newer_than:{newer_than_days}d",
+        f"from:lever.co newer_than:{newer_than_days}d",
+        f"from:ashbyhq.com newer_than:{newer_than_days}d",
+        f"from:myworkday.com newer_than:{newer_than_days}d",
+        f"from:workday.com newer_than:{newer_than_days}d",
+        f"from:icims.com newer_than:{newer_than_days}d",
+        f"from:smartrecruiters.com newer_than:{newer_than_days}d",
+    ]
+    persisted_by_id: dict[UUID, Email] = {}
+    failed_queries: list[dict[str, str]] = []
+    for query in queries:
+        try:
+            for email_record in sync_gmail_messages(
+                db,
+                query=query,
+                max_results=max_results_per_query,
+                skip_existing=skip_existing,
+            ):
+                persisted_by_id[email_record.id] = email_record
+        except Exception as error:
+            failed_queries.append({"query": query, "error": str(error)})
+
+    write_audit_log(
+        db,
+        event_type="gmail.career_sync_completed",
+        entity_type="gmail",
+        details={
+            "newer_than_days": newer_than_days,
+            "max_results_per_query": max_results_per_query,
+            "new_messages_synced": len(persisted_by_id),
+            "failed_queries": failed_queries,
+        },
+    )
+    db.commit()
+    return list(persisted_by_id.values())
+
+
 def reclassify_stored_emails(db: Session) -> list[Email]:
     emails = list(db.scalars(select(Email).order_by(Email.received_at.asc().nullsfirst(), Email.created_at.asc())))
     for email_record in emails:

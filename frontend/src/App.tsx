@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api/v1'
@@ -930,6 +930,7 @@ function SetupHome(props: {
 }
 
 function App() {
+  const autoInboxRefreshStarted = useRef(false)
   const [activeSection, setActiveSection] = useState<AppSection>('overview')
   const [dashboardUnlocked, setDashboardUnlocked] = useState(false)
   const [jobSearch, setJobSearch] = useState('')
@@ -1164,7 +1165,7 @@ function App() {
     })
   }
 
-  async function runOperation(label: string, operation: () => Promise<string>) {
+  const runOperation = useCallback(async (label: string, operation: () => Promise<string>) => {
     setOperationMutating((current) => ({ ...current, [label]: true }))
     setOperationError(null)
     setOperationMessage(null)
@@ -1176,7 +1177,7 @@ function App() {
     } finally {
       setOperationMutating((current) => ({ ...current, [label]: false }))
     }
-  }
+  }, [])
 
   async function refreshCoreData() {
     await Promise.all([
@@ -1255,23 +1256,21 @@ function App() {
     })
   }
 
-  async function handleSyncGmail() {
+  const handleSyncGmail = useCallback(async () => {
     await runOperation('sync-gmail', async () => {
-      const syncedEmails = await requestApi<Email[]>('/gmail/sync', {
+      const syncedEmails = await requestApi<Email[]>('/gmail/sync-career', {
         method: 'POST',
-        body: JSON.stringify({
-          query: 'category:primary newer_than:30d',
-          max_results: 25,
-          skip_existing: true,
-        }),
       })
       await Promise.all([
         loadResource<Email[]>('/emails', setEmails, []),
+        loadResource<Job[]>('/jobs', setJobs, []),
+        loadResource<Application[]>('/applications', setApplications, []),
+        loadResource<Action[]>('/actions', setActions, []),
         loadResource<GmailStatus | null>('/gmail/status', setGmailStatusState, null),
       ])
-      return `Inbox refresh finished: ${syncedEmails.length} new relevant email(s) classified.`
+      return `Inbox refresh finished: ${syncedEmails.length} new career email(s) classified.`
     })
-  }
+  }, [runOperation])
 
   async function handleRunGmailAuth() {
     await runOperation('gmail-auth', async () => {
@@ -1645,6 +1644,17 @@ function App() {
     }
   }
 
+  useEffect(() => {
+    if (!gmailStatusState.data?.authenticated || autoInboxRefreshStarted.current) {
+      return
+    }
+    autoInboxRefreshStarted.current = true
+    const timer = window.setTimeout(() => {
+      void handleSyncGmail()
+    }, 600)
+    return () => window.clearTimeout(timer)
+  }, [gmailStatusState.data?.authenticated, handleSyncGmail])
+
   if (!workspaceUnlocked) {
     return (
       <SetupHome
@@ -1676,22 +1686,59 @@ function App() {
                 profile evidence, CV drafts, and next actions from one private workspace.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-3 lg:min-w-[420px] lg:grid-cols-3">
-              <MetricCard
-                label="Jobs"
-                value={jobs.data.length}
-                note={`${selectedJobScores.data.length} score records visible for selected job`}
-              />
-              <MetricCard
-                label="Applications"
-                value={applications.data.length}
-                note={`${pendingApplications.length} still in pre-submit or review`}
-              />
-              <MetricCard
-                label="Urgent inbox"
-                value={importantEmails.length}
-                note={`${openActions.length} open actions currently tracked`}
-              />
+            <div className="flex flex-col gap-3 lg:min-w-[560px]">
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-slate-400">Google</p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {gmailStatusState.data?.authenticated ? 'Connected' : 'Sign-in required'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleStartGmailWebOAuth()}
+                      disabled={
+                        operationMutating['gmail-web-oauth'] ||
+                        !gmailStatusState.data?.credentials_file_exists
+                      }
+                      className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {gmailStatusState.data?.authenticated ? 'Reconnect' : 'Continue with Google'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleSyncGmail()}
+                      disabled={
+                        operationMutating['sync-gmail'] ||
+                        !gmailStatusState.data?.authenticated
+                      }
+                      className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {operationMutating['sync-gmail'] ? 'Refreshing...' : 'Refresh inbox'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                <MetricCard
+                  label="Jobs"
+                  value={jobs.data.length}
+                  note={`${selectedJobScores.data.length} score records visible for selected job`}
+                />
+                <MetricCard
+                  label="Applications"
+                  value={applications.data.length}
+                  note={`${pendingApplications.length} still in pre-submit or review`}
+                />
+                <MetricCard
+                  label="Urgent inbox"
+                  value={importantEmails.length}
+                  note={`${openActions.length} open actions currently tracked`}
+                />
+              </div>
             </div>
           </div>
         </header>
