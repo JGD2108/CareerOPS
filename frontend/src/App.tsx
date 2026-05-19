@@ -11,6 +11,10 @@ const API_HOSTNAME = (() => {
   }
 })()
 const IS_LOCAL_API = API_HOSTNAME === '127.0.0.1' || API_HOSTNAME === 'localhost'
+const GMAIL_CONNECTED_MESSAGE =
+  'Gmail connected. You can now sync recruiter emails and LinkedIn alerts.'
+const INITIAL_GMAIL_CONNECTED =
+  new URLSearchParams(window.location.search).get('gmail') === 'connected'
 
 type Company = {
   id: string
@@ -774,8 +778,8 @@ function SetupHome(props: {
                   {props.gmailConnecting
                     ? 'Opening Google...'
                     : gmailReady
-                      ? 'Reconnect Gmail'
-                      : 'Connect Gmail'}
+                      ? 'Reconnect Google'
+                      : 'Sign in with Google'}
                 </button>
                 <button
                   type="button"
@@ -848,10 +852,9 @@ function SetupHome(props: {
 
 function App() {
   const [activeSection, setActiveSection] = useState<AppSection>('overview')
-  const [dashboardUnlocked, setDashboardUnlocked] = useState(() => {
-    const params = new URLSearchParams(window.location.search)
-    return window.location.hash === '#dashboard' || params.get('gmail') === 'connected'
-  })
+  const [dashboardUnlocked, setDashboardUnlocked] = useState(
+    () => window.location.hash === '#dashboard',
+  )
   const [jobSearch, setJobSearch] = useState('')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null)
@@ -859,7 +862,9 @@ function App() {
   const [actionMutating, setActionMutating] = useState<ActionMutationState>({})
   const [emailMutating, setEmailMutating] = useState<EmailMutationState>({})
   const [operationMutating, setOperationMutating] = useState<Record<string, boolean>>({})
-  const [operationMessage, setOperationMessage] = useState<string | null>(null)
+  const [operationMessage, setOperationMessage] = useState<string | null>(
+    INITIAL_GMAIL_CONNECTED ? GMAIL_CONNECTED_MESSAGE : null,
+  )
   const [operationError, setOperationError] = useState<string | null>(null)
   const [documentSourceType, setDocumentSourceType] = useState('linkedin')
   const [selectedDocument, setSelectedDocument] = useState<File | null>(null)
@@ -907,6 +912,11 @@ function App() {
   >(createInitialResource([]))
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('gmail') === 'connected') {
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+
     void loadResource<Job[]>('/jobs', setJobs, [])
     void loadResource<Application[]>('/applications', setApplications, [])
     void loadResource<Action[]>('/actions', setActions, [])
@@ -2122,7 +2132,9 @@ function App() {
                         >
                           {operationMutating['gmail-web-oauth']
                             ? 'Opening OAuth...'
-                            : 'Open web OAuth URL'}
+                            : gmailStatusState.data?.authenticated
+                              ? 'Reconnect Google'
+                              : 'Sign in with Google'}
                         </button>
                       </div>
                       <p className="mt-3 text-xs text-slate-500">
