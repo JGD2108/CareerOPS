@@ -405,6 +405,51 @@ async function requestApi<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
+async function requestCareerInboxSync(): Promise<Email[]> {
+  try {
+    return await requestApi<Email[]>('/gmail/sync-career', {
+      method: 'POST',
+    })
+  } catch (error) {
+    const status = (error as Error & { status?: number }).status
+    if (status !== 404) {
+      throw error
+    }
+  }
+
+  const fallbackQueries = [
+    'newer_than:180d "your application"',
+    'newer_than:180d "thank you for applying"',
+    'newer_than:180d "we received your application"',
+    'newer_than:180d interview',
+    'newer_than:180d assessment',
+    'newer_than:180d recruiter',
+    'newer_than:180d "coding challenge"',
+    'from:jobalerts-noreply@linkedin.com newer_than:180d',
+    'from:jobs-noreply@linkedin.com newer_than:180d',
+    'from:notifications-noreply@linkedin.com newer_than:180d',
+    'from:greenhouse-mail.io newer_than:180d',
+    'from:lever.co newer_than:180d',
+    'from:ashbyhq.com newer_than:180d',
+    'from:myworkday.com newer_than:180d',
+    'from:icims.com newer_than:180d',
+    'from:smartrecruiters.com newer_than:180d',
+  ]
+  const emailsById = new Map<string, Email>()
+  for (const query of fallbackQueries) {
+    const syncedEmails = await requestApi<Email[]>('/gmail/sync', {
+      method: 'POST',
+      body: JSON.stringify({
+        query,
+        max_results: 25,
+        skip_existing: true,
+      }),
+    })
+    syncedEmails.forEach((email) => emailsById.set(email.id, email))
+  }
+  return [...emailsById.values()]
+}
+
 function cvArtifactUrl(cvVersionId: string, artifactFormat: 'pdf' | 'tex'): string {
   return `${API_BASE_URL}/cv-versions/${cvVersionId}/download?artifact_format=${artifactFormat}`
 }
@@ -1258,9 +1303,7 @@ function App() {
 
   const handleSyncGmail = useCallback(async () => {
     await runOperation('sync-gmail', async () => {
-      const syncedEmails = await requestApi<Email[]>('/gmail/sync-career', {
-        method: 'POST',
-      })
+      const syncedEmails = await requestCareerInboxSync()
       await Promise.all([
         loadResource<Email[]>('/emails', setEmails, []),
         loadResource<Job[]>('/jobs', setJobs, []),
