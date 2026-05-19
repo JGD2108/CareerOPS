@@ -1130,11 +1130,17 @@ function App() {
 
   async function handleExtractProfile() {
     await runOperation('extract-profile', async () => {
-      const extractedProfile = await requestApi<CandidateProfile>('/profile/extract', {
+      if (!latestCvDocument) {
+        throw new Error('Upload your base CV as source type "Base CV" before building the profile.')
+      }
+      const extractedProfile = await requestApi<CandidateProfile>('/agents/profile/run', {
         method: 'POST',
+        body: JSON.stringify({
+          document_id: latestCvDocument.id,
+        }),
       })
       await loadResource<CandidateProfile | null>('/profile', setProfile, null)
-      return `Profile rebuilt for ${extractedProfile.display_name ?? 'candidate'} using stored documents only.`
+      return `AI profile agent rebuilt ${cleanDisplayName(extractedProfile.display_name)} using stored documents only.`
     })
   }
 
