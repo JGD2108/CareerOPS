@@ -11,15 +11,8 @@ def auth_status() -> dict[str, bool]:
     return {"enabled": settings.app_auth_enabled, "configured": bool(settings.app_api_key)}
 
 
-def require_app_auth(
-    request: Request | str | None = None,
-    x_careerops_key: str | None = Header(default=None),
-) -> None:
-    if isinstance(request, str):
-        x_careerops_key = request
-        request = None
-
-    if request and request.url.path in PUBLIC_AUTH_PATHS:
+def validate_app_auth(x_careerops_key: str | None, request_path: str | None = None) -> None:
+    if request_path in PUBLIC_AUTH_PATHS:
         return
     if not settings.app_auth_enabled:
         return
@@ -30,3 +23,10 @@ def require_app_auth(
         )
     if x_careerops_key != settings.app_api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid CareerOps API key.")
+
+
+def require_app_auth(
+    request: Request,
+    x_careerops_key: str | None = Header(default=None),
+) -> None:
+    validate_app_auth(x_careerops_key=x_careerops_key, request_path=request.url.path)
