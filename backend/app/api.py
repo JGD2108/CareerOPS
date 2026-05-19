@@ -353,8 +353,8 @@ def start_gmail_oauth() -> dict[str, str]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
 
-@router.get("/gmail/oauth/callback")
-def finish_gmail_oauth(code: str, state: str | None = None) -> GmailStatusRead | RedirectResponse:
+@router.get("/gmail/oauth/callback", response_model=None)
+def finish_gmail_oauth(code: str, state: str | None = None):
     try:
         gmail_auth_status = complete_gmail_web_oauth(code=code, state=state)
     except ValueError as error:
