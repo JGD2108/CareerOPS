@@ -1151,25 +1151,9 @@ def sync_career_gmail_messages(
     skip_existing: bool = True,
 ) -> list[Email]:
     queries = [
-        f'newer_than:{newer_than_days}d "your application"',
-        f'newer_than:{newer_than_days}d "thank you for applying"',
-        f'newer_than:{newer_than_days}d "we received your application"',
-        f'newer_than:{newer_than_days}d "application received"',
-        f'newer_than:{newer_than_days}d interview',
-        f'newer_than:{newer_than_days}d assessment',
-        f'newer_than:{newer_than_days}d recruiter',
-        f'newer_than:{newer_than_days}d "coding challenge"',
-        f"from:jobalerts-noreply@linkedin.com newer_than:{newer_than_days}d",
-        f"from:jobs-noreply@linkedin.com newer_than:{newer_than_days}d",
-        f"from:notifications-noreply@linkedin.com newer_than:{newer_than_days}d",
-        f"from:greenhouse-mail.io newer_than:{newer_than_days}d",
-        f"from:greenhouse.io newer_than:{newer_than_days}d",
-        f"from:lever.co newer_than:{newer_than_days}d",
-        f"from:ashbyhq.com newer_than:{newer_than_days}d",
-        f"from:myworkday.com newer_than:{newer_than_days}d",
-        f"from:workday.com newer_than:{newer_than_days}d",
-        f"from:icims.com newer_than:{newer_than_days}d",
-        f"from:smartrecruiters.com newer_than:{newer_than_days}d",
+        f'newer_than:{newer_than_days}d {{application interview assessment recruiter "coding challenge" "thank you for applying" "we received your application"}}',
+        f"newer_than:{newer_than_days}d {{from:jobalerts-noreply@linkedin.com from:jobs-noreply@linkedin.com from:notifications-noreply@linkedin.com}}",
+        f"newer_than:{newer_than_days}d {{from:greenhouse-mail.io from:greenhouse.io from:lever.co from:ashbyhq.com from:myworkday.com from:workday.com from:icims.com from:smartrecruiters.com}}",
     ]
     persisted_by_id: dict[UUID, Email] = {}
     failed_queries: list[dict[str, str]] = []

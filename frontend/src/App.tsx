@@ -418,34 +418,30 @@ async function requestCareerInboxSync(): Promise<Email[]> {
   }
 
   const fallbackQueries = [
-    'newer_than:180d "your application"',
-    'newer_than:180d "thank you for applying"',
-    'newer_than:180d "we received your application"',
-    'newer_than:180d interview',
-    'newer_than:180d assessment',
-    'newer_than:180d recruiter',
-    'newer_than:180d "coding challenge"',
-    'from:jobalerts-noreply@linkedin.com newer_than:180d',
-    'from:jobs-noreply@linkedin.com newer_than:180d',
-    'from:notifications-noreply@linkedin.com newer_than:180d',
-    'from:greenhouse-mail.io newer_than:180d',
-    'from:lever.co newer_than:180d',
-    'from:ashbyhq.com newer_than:180d',
-    'from:myworkday.com newer_than:180d',
-    'from:icims.com newer_than:180d',
-    'from:smartrecruiters.com newer_than:180d',
+    'newer_than:180d {application interview assessment recruiter "coding challenge" "thank you for applying" "we received your application"}',
+    'newer_than:180d {from:jobalerts-noreply@linkedin.com from:jobs-noreply@linkedin.com from:notifications-noreply@linkedin.com}',
+    'newer_than:180d {from:greenhouse-mail.io from:greenhouse.io from:lever.co from:ashbyhq.com from:myworkday.com from:icims.com from:smartrecruiters.com}',
   ]
   const emailsById = new Map<string, Email>()
   for (const query of fallbackQueries) {
-    const syncedEmails = await requestApi<Email[]>('/gmail/sync', {
-      method: 'POST',
-      body: JSON.stringify({
-        query,
-        max_results: 25,
-        skip_existing: true,
-      }),
-    })
-    syncedEmails.forEach((email) => emailsById.set(email.id, email))
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), 20000)
+    try {
+      const syncedEmails = await requestApi<Email[]>('/gmail/sync', {
+        method: 'POST',
+        signal: controller.signal,
+        body: JSON.stringify({
+          query,
+          max_results: 50,
+          skip_existing: true,
+        }),
+      })
+      syncedEmails.forEach((email) => emailsById.set(email.id, email))
+    } catch {
+      // Keep the dashboard responsive if one Gmail search is slow or unsupported.
+    } finally {
+      window.clearTimeout(timer)
+    }
   }
   return [...emailsById.values()]
 }
