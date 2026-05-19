@@ -531,6 +531,46 @@ function formatSourceLabel(source: string): string {
     .join(' ')
 }
 
+function TriageAuditPanel() {
+  const [events, setEvents] = React.useState<Array<any>>([])
+
+  React.useEffect(() => {
+    let mounted = true
+    void (async () => {
+      try {
+        const data = await requestApi<any[]>('/agents/triage-audit')
+        if (mounted) setEvents(data.slice(0, 6))
+      } catch {
+        // ignore errors for this non-critical panel
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  if (!events.length) {
+    return <p className="text-xs text-slate-500 mt-1">No recent triage events.</p>
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      {events.map((e) => (
+        <div key={e.id} className="rounded border border-slate-200 bg-white p-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">{e.event_type}</span>
+            <span className="text-slate-500">{e.created_at ? new Date(e.created_at).toLocaleString() : ''}</span>
+          </div>
+          <div className="mt-1 text-slate-600">
+            <div>{e.details?.subject ? truncate(e.details.subject, 80) : e.details?.reason ?? ''}</div>
+            <div className="mt-1 text-xxs text-slate-400">from: {e.details?.from ?? e.details?.from_header ?? 'unknown'}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function gmailThreadUrl(email: Email): string | null {
   if (!email.gmail_thread_id) {
     return null
@@ -3196,6 +3236,10 @@ function App() {
                 title="Job inbox"
                 subtitle="Only application, recruiter, interview, assessment, offer, and other work-related Gmail signals are shown here."
               >
+                    <div className="mb-3">
+                      <h3 className="text-sm font-semibold">Recent triage audit</h3>
+                      <TriageAuditPanel />
+                    </div>
                 <ResourceBanner title="Emails" state={emails} />
                 <div className="space-y-3">
                   {inboxEmails.map((email) => (

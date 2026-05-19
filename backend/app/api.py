@@ -61,6 +61,8 @@ from app.message_agent import generate_message_drafts, list_message_drafts, revi
 from app.models import SourceType
 from app.models import ActionStatus
 from app.profile_ingestion import extract_profile_from_latest_cv, get_profile
+from app.models import AuditLog
+from sqlalchemy import select
 from app.schemas import (
     ApplicationCreate,
     ApplicationMarkAppliedRequest,
@@ -240,6 +242,27 @@ def read_profile(db: Session = Depends(get_db)) -> CandidateProfileRead | None:
     return profile
 
 
+@router.get("/agents/triage-audit")
+def read_triage_audit(limit: int = Query(100, ge=1, le=1000), db: Session = Depends(get_db)) -> list[dict]:
+    """Return recent triage-related audit logs (gmail.* events) for observability."""
+    stmt = select(AuditLog).where(AuditLog.event_type.like('gmail.%')).order_by(AuditLog.created_at.desc()).limit(limit)
+    records = list(db.scalars(stmt))
+    results: list[dict] = []
+    for r in records:
+        results.append(
+            {
+                "id": str(r.id),
+                "actor": r.actor,
+                "event_type": r.event_type,
+                "entity_type": r.entity_type,
+                "entity_id": str(r.entity_id) if r.entity_id else None,
+                "details": r.details,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+        )
+    return results
+
+
 @router.post("/jobs/{job_id}/score", response_model=JobScoreRead)
 def score_job(job_id: UUID, db: Session = Depends(get_db)) -> JobScoreRead:
     job_score = score_job_fit(db, job_id)
@@ -363,12 +386,9 @@ def finish_gmail_oauth(code: str, state: str | None = None, db: Session = Depend
 
     post_auth_sync = "done"
     synced_email_count = 0
-    linked_jobs_count = 0
     try:
         synced_emails = sync_career_gmail_messages(db, newer_than_days=180, max_results_per_query=25)
-        linkedin_result = sync_linkedin_activity(db, newer_than_days=90, max_results=50)
         synced_email_count = len(synced_emails)
-        linked_jobs_count = linkedin_result.get("jobs_imported", 0)
     except Exception:
         post_auth_sync = "failed"
 
@@ -377,7 +397,7 @@ def finish_gmail_oauth(code: str, state: str | None = None, db: Session = Depend
         separator = "&" if "?" in frontend_url else "?"
         return RedirectResponse(
             f"{frontend_url}{separator}gmail=connected&sync={post_auth_sync}"
-            f"&emails={synced_email_count}&jobs={linked_jobs_count}"
+            f"&emails={synced_email_count}"
         )
     return {
         "credentials_file_exists": gmail_auth_status.credentials_file_exists,
@@ -386,7 +406,6 @@ def finish_gmail_oauth(code: str, state: str | None = None, db: Session = Depend
         "scopes": gmail_auth_status.scopes,
         "post_auth_sync": post_auth_sync,
         "synced_email_count": synced_email_count,
-        "linked_jobs_count": linked_jobs_count,
     }
 
 
