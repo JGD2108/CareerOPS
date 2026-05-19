@@ -15,12 +15,11 @@ const INITIAL_URL_PARAMS = new URLSearchParams(window.location.search)
 const INITIAL_GMAIL_CONNECTED = INITIAL_URL_PARAMS.get('gmail') === 'connected'
 const INITIAL_GMAIL_SYNC = INITIAL_URL_PARAMS.get('sync')
 const INITIAL_GMAIL_EMAILS = Number(INITIAL_URL_PARAMS.get('emails') ?? 0)
-const INITIAL_LINKEDIN_JOBS = Number(INITIAL_URL_PARAMS.get('jobs') ?? 0)
 const GMAIL_CONNECTED_MESSAGE =
   INITIAL_GMAIL_SYNC === 'failed'
     ? 'Google connected. Inbox refresh needs a retry.'
     : INITIAL_GMAIL_SYNC === 'done'
-      ? `Google connected. Inbox updated: ${INITIAL_GMAIL_EMAILS} email(s), ${INITIAL_LINKEDIN_JOBS} LinkedIn job(s).`
+      ? `Google connected. Job inbox updated: ${INITIAL_GMAIL_EMAILS} email(s).`
       : 'Google connected.'
 
 type Company = {
@@ -419,7 +418,6 @@ async function requestCareerInboxSync(): Promise<Email[]> {
 
   const fallbackQueries = [
     'newer_than:180d {application interview assessment recruiter "coding challenge" "thank you for applying" "we received your application"}',
-    'newer_than:180d {from:jobalerts-noreply@linkedin.com from:jobs-noreply@linkedin.com from:notifications-noreply@linkedin.com}',
     'newer_than:180d {from:greenhouse-mail.io from:greenhouse.io from:lever.co from:ashbyhq.com from:myworkday.com from:icims.com from:smartrecruiters.com}',
   ]
   const emailsById = new Map<string, Email>()
@@ -1161,6 +1159,23 @@ function App() {
     )
   }, [emails.data])
 
+  const inboxEmails = useMemo(() => {
+    const JOB_INBOX_CATEGORIES = [
+      'application_confirmation',
+      'interview_invitation',
+      'coding_assessment',
+      'recruiter_follow_up',
+      'rejection',
+      'offer',
+      'documents_requested',
+      'form_pending',
+    ]
+    return emails.data.filter((email) => {
+      if (email.application_id) return true
+      return JOB_INBOX_CATEGORIES.includes((email.category || '').toLowerCase())
+    })
+  }, [emails.data])
+
   const selectedJobScore = selectedJobScores.data[0] ?? null
   const approvedCvCount = selectedJobCvVersions.data.filter(
     (version) => version.status === 'approved',
@@ -1404,7 +1419,7 @@ function App() {
         loadResource<Application[]>('/applications', setApplications, []),
         loadResource<Action[]>('/actions', setActions, []),
       ])
-      return `LinkedIn via Gmail synced: ${result.job_alerts} job alerts, ${result.application_confirmations} application confirmations, ${result.jobs_imported} new jobs, ${result.applications_marked_applied} applied records, ${result.jobs_auto_scored} auto-scored jobs.`
+      return `LinkedIn via Gmail synced: ${result.application_confirmations} application confirmations, ${result.jobs_imported} new jobs, ${result.applications_marked_applied} applied records, ${result.jobs_auto_scored} auto-scored jobs.`
     })
   }
 
@@ -1474,7 +1489,7 @@ function App() {
         loadResource<Application[]>('/applications', setApplications, []),
         loadResource<Action[]>('/actions', setActions, []),
       ])
-      return `AI email triage reviewed ${triagedEmails.length} filtered unlinked emails using the low-cost inbox model.`
+      return `AI email triage reviewed ${triagedEmails.length} unlinked emails using the low-cost inbox model.`
     })
   }
 
@@ -1488,7 +1503,7 @@ function App() {
         loadResource<Job[]>('/jobs', setJobs, []),
         loadResource<Application[]>('/applications', setApplications, []),
       ])
-      return `Reclassified ${updatedEmails.length} emails and imported LinkedIn job alerts where possible.`
+      return `Reclassified ${updatedEmails.length} emails for the work inbox.`
     })
   }
 
@@ -3178,12 +3193,12 @@ function App() {
 
             {activeSection === 'inbox' ? (
               <Panel
-                title="Recruiter inbox"
-                subtitle="Synced Gmail signals, sorted by urgency and whether they need a human response."
+                title="Job inbox"
+                subtitle="Only application, recruiter, interview, assessment, offer, and other work-related Gmail signals are shown here."
               >
                 <ResourceBanner title="Emails" state={emails} />
                 <div className="space-y-3">
-                  {emails.data.map((email) => (
+                  {inboxEmails.map((email) => (
                     <article
                       key={email.id}
                       className="rounded-md border border-slate-200 bg-slate-50 p-4"

@@ -260,6 +260,22 @@ def _has_any(content: str, terms: list[str]) -> bool:
     return any(term in content for term in terms)
 
 
+_JOB_INBOX_CATEGORIES = {
+    EmailCategory.APPLICATION_CONFIRMATION,
+    EmailCategory.INTERVIEW_INVITATION,
+    EmailCategory.CODING_ASSESSMENT,
+    EmailCategory.RECRUITER_FOLLOW_UP,
+    EmailCategory.REJECTION,
+    EmailCategory.OFFER,
+    EmailCategory.DOCUMENTS_REQUESTED,
+    EmailCategory.FORM_PENDING,
+}
+
+
+def _is_job_inbox_email(email_record: Email) -> bool:
+    return email_record.application_id is not None or email_record.category in _JOB_INBOX_CATEGORIES
+
+
 def _classify_email(subject: str | None, body_text: str | None, from_email: str) -> tuple[EmailCategory, str, bool, str]:
     content = " ".join([subject or "", body_text or "", from_email]).lower()
     sender = from_email.lower()
@@ -278,8 +294,32 @@ def _classify_email(subject: str | None, body_text: str | None, from_email: str)
     ):
         return EmailCategory.APPLICATION_CONFIRMATION, "normal", False, "Imported as a LinkedIn application confirmation and marked applied when the role can be parsed."
 
-    if "jobalerts-noreply@linkedin.com" in sender or _has_any(content, ["job alert", "new jobs match your preferences", "linkedin job alerts", "view job: https://www.linkedin.com/comm/jobs/view"]):
-        return EmailCategory.JOB_ALERT, "normal", False, "Review the job alert and score any relevant roles before applying."
+    # LinkedIn sends both actionable job alerts and digest/newsletter-style messages.
+    # Treat as JOB_ALERT only when the content contains explicit job links or clear actionable lines;
+    # otherwise classify as OTHER to keep inbox focused on actionable items.
+    if "jobalerts-noreply@linkedin.com" in sender or _has_any(
+        content,
+        ["job alert", "new jobs match your preferences", "linkedin job alerts", "view job: https://www.linkedin.com/comm/jobs/view"],
+    ):
+        # Stronger negative checks for common LinkedIn digest/newsletter senders and phrasing.
+        linkedin_digest_senders = [
+            "jobalerts-noreply@linkedin.com",
+            "jobs-noreply@linkedin.com",
+            "notifications-noreply@linkedin.com",
+            "messaging-digest-noreply@linkedin.com",
+            "newsletters-noreply@linkedin.com",
+            "invitations@linkedin.com",
+            "messaging-digest@linkedin.com",
+        ]
+        is_digest_sender = any(s in sender for s in linkedin_digest_senders)
+        has_job_link = bool(re.search(r"https?://(?:www\.)?linkedin\.com/(?:comm/)?jobs/view/", content))
+        has_actionable_phrase = _has_any(content, ["view job", "apply now", "apply", "job: ", "position: "])
+        has_recommended_phrase = _has_any(content, ["recommended for you", "recommended jobs", "new jobs similar to", "your saved job", "jobs you may be interested in"])
+        # If explicit job link or actionable phrase present, treat as JOB_ALERT; otherwise downgrade digest/newsletter style messages.
+        if has_job_link or has_actionable_phrase:
+            return EmailCategory.JOB_ALERT, "normal", False, "Review the job alert and score any relevant roles before applying."
+        if is_digest_sender or has_recommended_phrase:
+            return EmailCategory.OTHER, "normal", False, "LinkedIn digest/newsletter — ignore for CareerOps unless manually reviewed."
 
     if "newsletter" in (subject or "").lower():
         return EmailCategory.OTHER, "normal", False, "Ignore newsletter content for CareerOps unless manually reviewed."
@@ -358,7 +398,25 @@ def _classify_email(subject: str | None, body_text: str | None, from_email: str)
         return EmailCategory.DOCUMENTS_REQUESTED, "high", True, "Prepare the requested documents and draft a reply."
     if _has_any(content, ["complete the form", "application form", "questionnaire", "fill out"]):
         return EmailCategory.FORM_PENDING, "high", True, "Complete the requested form and confirm back."
-    if _has_any(content, ["following up", "wanted to follow up", "checking in", "recruiter", "talent acquisition"]):
+    if _has_any(
+        content,
+        [
+            "following up",
+            "wanted to follow up",
+            "checking in",
+            "recruiter",
+            "talent acquisition",
+            # Spanish equivalents
+            "seguimiento",
+            "seguimos",
+            "queríamos confirmar",
+            "confirmar disponibilidad",
+            "disponibilidad",
+            "entrevista técnica",
+            "reclutamiento",
+            "reclutador",
+        ],
+    ):
         return EmailCategory.RECRUITER_FOLLOW_UP, "normal", True, "Draft a recruiter reply and decide whether to continue."
     return EmailCategory.OTHER, "normal", False, "Review manually and decide whether action is needed."
 
@@ -1007,17 +1065,44 @@ def _persist_normalized_email(db: Session, normalized: NormalizedEmailPayload) -
         email_record.suggested_action = normalized.suggested_action
         email_record.received_at = normalized.received_at
 
+    # If this message was downgraded to OTHER and appears to be a LinkedIn digest/newsletter,
+    # write an audit log so analysts can review why it was excluded from the job inbox.
+    try:
+        if (
+            normalized.category == EmailCategory.OTHER
+            and normalized.from_email
+            and "linkedin" in normalized.from_email.lower()
+        ):
+            # ensure the email has an id assigned
+            db.flush()
+            write_audit_log(
+                db,
+                event_type="gmail.email_downgraded",
+                entity_type="email",
+                entity_id=email_record.id,
+                details={
+                    "reason": "linkedin_digest_or_newsletter",
+                    "from": normalized.from_email,
+                    "subject": normalized.subject,
+                },
+            )
+    except Exception:
+        # Do not let audit logging break ingestion.
+        pass
+
     return email_record
 
 
 def list_emails(db: Session) -> list[Email]:
-    return list(
-        db.scalars(
+    return [
+        email_record
+        for email_record in db.scalars(
             select(Email)
             .options(joinedload(Email.raw_email))
             .order_by(Email.received_at.desc().nullslast(), Email.created_at.desc())
         )
-    )
+        if _is_job_inbox_email(email_record)
+    ]
 
 
 def list_raw_emails(db: Session) -> list[RawEmail]:
@@ -1152,7 +1237,6 @@ def sync_career_gmail_messages(
 ) -> list[Email]:
     queries = [
         f'newer_than:{newer_than_days}d {{application interview assessment recruiter "coding challenge" "thank you for applying" "we received your application"}}',
-        f"newer_than:{newer_than_days}d {{from:jobalerts-noreply@linkedin.com from:jobs-noreply@linkedin.com from:notifications-noreply@linkedin.com}}",
         f"newer_than:{newer_than_days}d {{from:greenhouse-mail.io from:greenhouse.io from:lever.co from:ashbyhq.com from:myworkday.com from:workday.com from:icims.com from:smartrecruiters.com}}",
     ]
     persisted_by_id: dict[UUID, Email] = {}
@@ -1192,6 +1276,23 @@ def reclassify_stored_emails(db: Session) -> list[Email]:
             email_record.body_text or email_record.snippet,
             email_record.from_email,
         )
+        # Audit downgraded LinkedIn digests when reclassifying stored emails.
+        try:
+            if category == EmailCategory.OTHER and email_record.from_email and "linkedin" in email_record.from_email.lower():
+                write_audit_log(
+                    db,
+                    event_type="gmail.email_downgraded_reclassification",
+                    entity_type="email",
+                    entity_id=email_record.id,
+                    details={
+                        "previous_category": str(email_record.category),
+                        "new_category": str(category),
+                        "from": email_record.from_email,
+                        "subject": email_record.subject,
+                    },
+                )
+        except Exception:
+            pass
         matched_application = _match_application_by_email_content(
             db,
             company_name=email_record.company_name,
