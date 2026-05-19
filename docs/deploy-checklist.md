@@ -14,6 +14,7 @@ OPENAI_API_KEY=
 APP_AUTH_ENABLED=true
 APP_API_KEY=
 CORS_ORIGINS=
+CORS_ORIGIN_REGEX=^https://frontend-[a-z0-9-]+-jgd2108s-projects\.vercel\.app$
 GMAIL_CREDENTIALS_JSON=
 GMAIL_OAUTH_REDIRECT_URI=
 LOCAL_STORAGE_DIR=/storage
@@ -41,6 +42,7 @@ APP_API_KEY=<generated private app key>
 GMAIL_CREDENTIALS_JSON=<web OAuth client JSON from Google Cloud, compact one-line JSON>
 GMAIL_OAUTH_REDIRECT_URI=https://YOUR_RENDER_BACKEND/api/v1/gmail/oauth/callback
 CORS_ORIGINS=https://YOUR_VERCEL_FRONTEND
+CORS_ORIGIN_REGEX=^https://frontend-[a-z0-9-]+-jgd2108s-projects\.vercel\.app$
 ```
 
 ## 2. Google Cloud Gmail OAuth
@@ -103,6 +105,7 @@ After frontend deploy, update backend:
 
 ```text
 CORS_ORIGINS=https://YOUR_FRONTEND_DOMAIN
+CORS_ORIGIN_REGEX=^https://frontend-[a-z0-9-]+-jgd2108s-projects\.vercel\.app$
 ```
 
 ## 4. After Deploy

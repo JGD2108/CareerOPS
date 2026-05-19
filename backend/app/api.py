@@ -230,11 +230,11 @@ def run_profile_agent(payload: ProfileAgentRunRequest, db: Session = Depends(get
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
 
-@router.get("/profile", response_model=CandidateProfileRead)
-def read_profile(db: Session = Depends(get_db)) -> CandidateProfileRead:
+@router.get("/profile", response_model=CandidateProfileRead | None)
+def read_profile(db: Session = Depends(get_db)) -> CandidateProfileRead | None:
     profile = get_profile(db)
     if not profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate profile not found")
+        return None
     return profile
 
 

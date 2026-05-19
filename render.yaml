@@ -49,6 +49,8 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false
+      - key: CORS_ORIGIN_REGEX
+        value: ^https://frontend-[a-z0-9-]+-jgd2108s-projects\.vercel\.app$
       - key: ENABLE_JOB_DISCOVERY_SCHEDULER
         value: "true"
       - key: DISCOVERY_SCHEDULE_HOUR
