@@ -625,10 +625,10 @@ function getRecommendationTone(value: string): string {
 
 function MetricCard(props: { label: string; value: string | number; note: string }) {
   return (
-    <article className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+    <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm shadow-slate-200/70">
       <p className="text-xs font-semibold uppercase text-slate-500">{props.label}</p>
-      <p className="mt-2 text-2xl font-semibold text-slate-950">{props.value}</p>
-      <p className="mt-1 text-xs leading-5 text-slate-500">{props.note}</p>
+      <p className="mt-3 text-3xl font-semibold text-slate-950">{props.value}</p>
+      <p className="mt-2 text-xs leading-5 text-slate-500">{props.note}</p>
     </article>
   )
 }
@@ -663,7 +663,7 @@ function ResourceBanner(props: { title: string; state: ResourceState<unknown> })
 
 function Panel(props: { title: string; subtitle?: string; children: ReactNode }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60">
       <div>
         <h2 className="text-lg font-semibold text-slate-950">{props.title}</h2>
         {props.subtitle ? (
@@ -677,7 +677,7 @@ function Panel(props: { title: string; subtitle?: string; children: ReactNode })
 
 function EmptyState(props: { title: string; body: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4">
+    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
       <p className="text-sm font-medium text-slate-900">{props.title}</p>
       <p className="mt-1 text-sm text-slate-600">{props.body}</p>
     </div>
@@ -694,10 +694,10 @@ function SectionButton(props: {
     <button
       type="button"
       onClick={props.onClick}
-      className={`flex items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm font-medium transition ${
+      className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
         props.active
           ? 'bg-slate-950 text-white shadow-sm'
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+          : 'text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm'
       }`}
     >
       <span>{props.label}</span>
@@ -754,6 +754,7 @@ function SetupHome(props: {
   onEnterDashboard: () => void
 }) {
   const gmailReady = Boolean(props.gmailStatus.data?.authenticated)
+  const gmailChecking = props.gmailStatus.loading || props.gmailStatus.data === null
   const gmailConfigured = Boolean(props.gmailStatus.data?.credentials_file_exists)
   const profileReady = Boolean(props.profile.data)
   const documentsReady = props.documents.data.length > 0
@@ -808,6 +809,8 @@ function SetupHome(props: {
                   >
                     {props.gmailConnecting
                       ? 'Opening Google...'
+                      : gmailChecking
+                        ? 'Checking Google...'
                       : gmailReady
                         ? 'Reconnect Google'
                         : 'Continue with Google'}
@@ -821,7 +824,7 @@ function SetupHome(props: {
                     Open workspace
                   </button>
                 </div>
-                {!gmailConfigured ? (
+                {!gmailChecking && !gmailConfigured ? (
                   <p className="mt-4 text-sm text-rose-200">Google OAuth is not configured on the backend.</p>
                 ) : null}
               </div>
@@ -854,6 +857,8 @@ function SetupHome(props: {
                     body={
                       gmailReady
                         ? 'Connected'
+                        : gmailChecking
+                          ? 'Checking'
                         : gmailConfigured
                           ? 'Waiting for sign-in'
                           : 'Backend credentials missing'
