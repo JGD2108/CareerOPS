@@ -1,11 +1,12 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app import crud
 from app.auth import auth_status, require_app_auth
+from app.config import get_settings
 from app.application_tracker import (
     build_application_summary,
     get_application,
@@ -352,12 +353,17 @@ def start_gmail_oauth() -> dict[str, str]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
 
-@router.get("/gmail/oauth/callback", response_model=GmailStatusRead)
-def finish_gmail_oauth(code: str, state: str | None = None) -> GmailStatusRead:
+@router.get("/gmail/oauth/callback")
+def finish_gmail_oauth(code: str, state: str | None = None) -> GmailStatusRead | RedirectResponse:
     try:
-        return complete_gmail_web_oauth(code=code, state=state)
+        gmail_auth_status = complete_gmail_web_oauth(code=code, state=state)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    frontend_url = get_settings().frontend_app_url
+    if frontend_url:
+        separator = "&" if "?" in frontend_url else "?"
+        return RedirectResponse(f"{frontend_url}{separator}gmail=connected")
+    return gmail_auth_status
 
 
 @router.post("/gmail/sync", response_model=list[EmailRead], status_code=status.HTTP_201_CREATED)

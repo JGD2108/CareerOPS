@@ -15,6 +15,7 @@ APP_AUTH_ENABLED=true
 APP_API_KEY=
 CORS_ORIGINS=
 CORS_ORIGIN_REGEX=^https://frontend-[a-z0-9-]+-jgd2108s-projects\.vercel\.app$
+FRONTEND_APP_URL=
 GMAIL_CREDENTIALS_JSON=
 GMAIL_OAUTH_REDIRECT_URI=
 LOCAL_STORAGE_DIR=/storage
@@ -43,6 +44,7 @@ GMAIL_CREDENTIALS_JSON=<web OAuth client JSON from Google Cloud, compact one-lin
 GMAIL_OAUTH_REDIRECT_URI=https://YOUR_RENDER_BACKEND/api/v1/gmail/oauth/callback
 CORS_ORIGINS=https://YOUR_VERCEL_FRONTEND
 CORS_ORIGIN_REGEX=^https://frontend-[a-z0-9-]+-jgd2108s-projects\.vercel\.app$
+FRONTEND_APP_URL=https://YOUR_VERCEL_FRONTEND
 ```
 
 ## 2. Google Cloud Gmail OAuth
@@ -61,6 +63,7 @@ Set:
 ```text
 GMAIL_OAUTH_REDIRECT_URI=https://YOUR_BACKEND_DOMAIN/api/v1/gmail/oauth/callback
 GMAIL_CREDENTIALS_JSON=<paste the web OAuth client JSON as one line>
+FRONTEND_APP_URL=https://YOUR_FRONTEND_DOMAIN
 ```
 
 Keep scopes:

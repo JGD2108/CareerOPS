@@ -695,8 +695,155 @@ function SectionButton(props: {
   )
 }
 
+function SetupStep(props: {
+  index: number
+  title: string
+  body: string
+  status: 'done' | 'pending' | 'loading'
+}) {
+  const tone =
+    props.status === 'done'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+      : props.status === 'loading'
+        ? 'border-slate-200 bg-slate-50 text-slate-700'
+        : 'border-amber-200 bg-amber-50 text-amber-950'
+
+  return (
+    <article className={`rounded-md border p-4 ${tone}`}>
+      <div className="flex items-start gap-3">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-white/70 text-sm font-semibold">
+          {props.status === 'done' ? 'OK' : props.index}
+        </span>
+        <div>
+          <p className="text-sm font-semibold">{props.title}</p>
+          <p className="mt-1 text-sm leading-6">{props.body}</p>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function SetupHome(props: {
+  gmailStatus: ResourceState<GmailStatus | null>
+  profile: ResourceState<CandidateProfile | null>
+  documents: ResourceState<DocumentRecord[]>
+  operationMessage: string | null
+  operationError: string | null
+  gmailConnecting: boolean
+  onConnectGmail: () => void
+  onOpenSetup: () => void
+  onEnterDashboard: () => void
+}) {
+  const gmailReady = Boolean(props.gmailStatus.data?.authenticated)
+  const profileReady = Boolean(props.profile.data)
+  const documentsReady = props.documents.data.length > 0
+  const loading =
+    props.gmailStatus.loading || props.profile.loading || props.documents.loading
+
+  return (
+    <div className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900 lg:px-8">
+      <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl flex-col justify-center">
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)] lg:items-center">
+            <div>
+              <p className="text-sm font-semibold text-sky-700">CareerOps Agent</p>
+              <h1 className="mt-3 max-w-3xl text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
+                Private job-search operations for better applications.
+              </h1>
+              <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600">
+                Connect Gmail, load your verified profile sources, then use the dashboard
+                to review jobs, recruiter signals, CV drafts, and next actions with a human
+                approval loop.
+              </p>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={props.onConnectGmail}
+                  disabled={props.gmailConnecting || !props.gmailStatus.data?.credentials_file_exists}
+                  className="rounded-md bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {props.gmailConnecting
+                    ? 'Opening Google...'
+                    : gmailReady
+                      ? 'Reconnect Gmail'
+                      : 'Connect Gmail'}
+                </button>
+                <button
+                  type="button"
+                  onClick={props.onOpenSetup}
+                  className="rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                >
+                  Upload CV and LinkedIn
+                </button>
+                <button
+                  type="button"
+                  onClick={props.onEnterDashboard}
+                  className="rounded-md border border-slate-300 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+                >
+                  Enter dashboard
+                </button>
+              </div>
+
+              {props.operationMessage ? (
+                <div className="mt-5 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                  {props.operationMessage}
+                </div>
+              ) : null}
+              {props.operationError ? (
+                <div className="mt-5 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                  {props.operationError}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-3">
+              <SetupStep
+                index={1}
+                title="Gmail OAuth"
+                body={
+                  gmailReady
+                    ? 'Gmail is authenticated. The inbox agent can sync and classify recruiter signals.'
+                    : props.gmailStatus.data?.credentials_file_exists
+                      ? 'Connect your Gmail account so CareerOps can read relevant alerts and recruiter emails.'
+                      : 'Gmail credentials are missing in the backend environment.'
+                }
+                status={loading ? 'loading' : gmailReady ? 'done' : 'pending'}
+              />
+              <SetupStep
+                index={2}
+                title="Evidence documents"
+                body={
+                  documentsReady
+                    ? `${props.documents.data.length} source document(s) are stored for profile extraction.`
+                    : 'Upload your CV, LinkedIn PDF/text, and LaTeX template before generating tailored materials.'
+                }
+                status={props.documents.loading ? 'loading' : documentsReady ? 'done' : 'pending'}
+              />
+              <SetupStep
+                index={3}
+                title="Candidate profile"
+                body={
+                  profileReady
+                    ? `${cleanDisplayName(props.profile.data?.display_name)} is ready for scoring and CV tailoring.`
+                    : 'Run the AI profile agent after uploading documents. The system will use only supported evidence.'
+                }
+                status={props.profile.loading ? 'loading' : profileReady ? 'done' : 'pending'}
+              />
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  )
+}
+
 function App() {
   const [activeSection, setActiveSection] = useState<AppSection>('overview')
+  const [dashboardUnlocked, setDashboardUnlocked] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return window.location.hash === '#dashboard' || params.get('gmail') === 'connected'
+  })
   const [jobSearch, setJobSearch] = useState('')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null)
@@ -1037,9 +1184,15 @@ function App() {
   async function handleStartGmailWebOAuth() {
     await runOperation('gmail-web-oauth', async () => {
       const result = await requestApi<GmailOAuthStart>('/gmail/oauth/start')
-      window.open(result.authorization_url, '_blank', 'noopener,noreferrer')
+      window.location.href = result.authorization_url
       return `Gmail OAuth opened. Redirect URI: ${result.redirect_uri}`
     })
+  }
+
+  function enterDashboard(section: AppSection = 'overview') {
+    setActiveSection(section)
+    setDashboardUnlocked(true)
+    window.history.replaceState(null, '', '#dashboard')
   }
 
   async function handleRebuildEmbeddings() {
@@ -1382,6 +1535,22 @@ function App() {
     } finally {
       setEmailMutating((current) => ({ ...current, [emailId]: false }))
     }
+  }
+
+  if (!dashboardUnlocked) {
+    return (
+      <SetupHome
+        gmailStatus={gmailStatusState}
+        profile={profile}
+        documents={documents}
+        operationMessage={operationMessage}
+        operationError={operationError}
+        gmailConnecting={Boolean(operationMutating['gmail-web-oauth'])}
+        onConnectGmail={() => void handleStartGmailWebOAuth()}
+        onOpenSetup={() => enterDashboard('setup')}
+        onEnterDashboard={() => enterDashboard('overview')}
+      />
+    )
   }
 
   return (

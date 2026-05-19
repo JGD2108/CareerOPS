@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     gmail_token_file: str = "../storage/secrets/gmail_token.json"
     gmail_token_json: str | None = None
     gmail_oauth_redirect_uri: str = "http://127.0.0.1:8000/api/v1/gmail/oauth/callback"
+    frontend_app_url: str | None = None
     cors_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
     cors_origin_regex: str | None = None
     app_auth_enabled: bool = False
