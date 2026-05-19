@@ -11,10 +11,17 @@ const API_HOSTNAME = (() => {
   }
 })()
 const IS_LOCAL_API = API_HOSTNAME === '127.0.0.1' || API_HOSTNAME === 'localhost'
+const INITIAL_URL_PARAMS = new URLSearchParams(window.location.search)
+const INITIAL_GMAIL_CONNECTED = INITIAL_URL_PARAMS.get('gmail') === 'connected'
+const INITIAL_GMAIL_SYNC = INITIAL_URL_PARAMS.get('sync')
+const INITIAL_GMAIL_EMAILS = Number(INITIAL_URL_PARAMS.get('emails') ?? 0)
+const INITIAL_LINKEDIN_JOBS = Number(INITIAL_URL_PARAMS.get('jobs') ?? 0)
 const GMAIL_CONNECTED_MESSAGE =
-  'Gmail connected. You can now sync recruiter emails and LinkedIn alerts.'
-const INITIAL_GMAIL_CONNECTED =
-  new URLSearchParams(window.location.search).get('gmail') === 'connected'
+  INITIAL_GMAIL_SYNC === 'failed'
+    ? 'Google connected. Inbox refresh needs a retry.'
+    : INITIAL_GMAIL_SYNC === 'done'
+      ? `Google connected. Inbox updated: ${INITIAL_GMAIL_EMAILS} email(s), ${INITIAL_LINKEDIN_JOBS} LinkedIn job(s).`
+      : 'Google connected.'
 
 type Company = {
   id: string
@@ -718,17 +725,17 @@ function SetupStep(props: {
       ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
       : props.status === 'loading'
         ? 'border-slate-200 bg-slate-50 text-slate-700'
-        : 'border-amber-200 bg-amber-50 text-amber-950'
+        : 'border-slate-200 bg-white text-slate-800'
 
   return (
-    <article className={`rounded-md border p-4 ${tone}`}>
-      <div className="flex items-start gap-3">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-white/70 text-sm font-semibold">
-          {props.status === 'done' ? 'OK' : props.index}
+    <article className={`rounded-xl border p-4 ${tone}`}>
+      <div className="flex items-center gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-xs font-semibold shadow-sm ring-1 ring-black/5">
+          {props.status === 'done' ? 'Ready' : props.index}
         </span>
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-semibold">{props.title}</p>
-          <p className="mt-1 text-sm leading-6">{props.body}</p>
+          <p className="mt-1 truncate text-sm">{props.body}</p>
         </div>
       </div>
     </article>
@@ -747,109 +754,168 @@ function SetupHome(props: {
   onEnterDashboard: () => void
 }) {
   const gmailReady = Boolean(props.gmailStatus.data?.authenticated)
+  const gmailConfigured = Boolean(props.gmailStatus.data?.credentials_file_exists)
   const profileReady = Boolean(props.profile.data)
   const documentsReady = props.documents.data.length > 0
+  const cvReady = props.documents.data.some((document) => document.source_type === 'cv')
   const loading =
     props.gmailStatus.loading || props.profile.loading || props.documents.loading
 
   return (
-    <div className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900 lg:px-8">
+    <div className="min-h-screen bg-[#eef2f7] px-4 py-6 text-slate-900 lg:px-8">
       <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl flex-col justify-center">
-        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)] lg:items-center">
-            <div>
-              <p className="text-sm font-semibold text-sky-700">CareerOps Agent</p>
-              <h1 className="mt-3 max-w-3xl text-3xl font-semibold tracking-tight text-slate-950 lg:text-5xl">
-                Private job-search operations for better applications.
-              </h1>
-              <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600">
-                Connect Gmail, load your verified profile sources, then use the dashboard
-                to review jobs, recruiter signals, CV drafts, and next actions with a human
-                approval loop.
-              </p>
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/70">
+          <div className="grid min-h-[680px] lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="flex flex-col justify-between bg-slate-950 p-7 text-white lg:p-10">
+              <div>
+                <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-slate-200">
+                  CareerOps Agent
+                </div>
+                <h1 className="mt-8 max-w-xl text-4xl font-semibold leading-[1.04] lg:text-6xl">
+                  Job search command center
+                </h1>
+                <p className="mt-5 max-w-md text-base leading-7 text-slate-300">
+                  Inbox, jobs, profile evidence, CVs, drafts, and next actions in one private workspace.
+                </p>
+              </div>
 
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={props.onConnectGmail}
-                  disabled={props.gmailConnecting || !props.gmailStatus.data?.credentials_file_exists}
-                  className="rounded-md bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {props.gmailConnecting
-                    ? 'Opening Google...'
-                    : gmailReady
-                      ? 'Reconnect Google'
-                      : 'Sign in with Google'}
-                </button>
-                <button
-                  type="button"
-                  onClick={props.onOpenSetup}
-                  disabled={!gmailReady}
-                  className="rounded-md border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Set up profile
-                </button>
+              <div className="mt-10">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-white/10 bg-white/10 p-4">
+                    <p className="text-xs text-slate-400">Google</p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {gmailReady ? 'Connected' : 'Required'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/10 p-4">
+                    <p className="text-xs text-slate-400">CV</p>
+                    <p className="mt-1 text-sm font-semibold">{cvReady ? 'Loaded' : 'Needed'}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/10 p-4">
+                    <p className="text-xs text-slate-400">Profile</p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {profileReady ? 'Built' : 'Pending'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={props.onConnectGmail}
+                    disabled={props.gmailConnecting || !gmailConfigured}
+                    className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {props.gmailConnecting
+                      ? 'Opening Google...'
+                      : gmailReady
+                        ? 'Reconnect Google'
+                        : 'Continue with Google'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={props.onEnterDashboard}
+                    disabled={!gmailReady}
+                    className="rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Open workspace
+                  </button>
+                </div>
+                {!gmailConfigured ? (
+                  <p className="mt-4 text-sm text-rose-200">Google OAuth is not configured on the backend.</p>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex flex-col justify-between p-6 lg:p-8">
+              <div>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-500">Access</p>
+                    <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                      {gmailReady ? 'Workspace ready' : 'Google sign-in required'}
+                    </h2>
+                  </div>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      gmailReady
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {gmailReady ? 'Unlocked' : 'Locked'}
+                  </span>
+                </div>
+
+                <div className="mt-7 space-y-3">
+                  <SetupStep
+                    index={1}
+                    title="Google"
+                    body={
+                      gmailReady
+                        ? 'Connected'
+                        : gmailConfigured
+                          ? 'Waiting for sign-in'
+                          : 'Backend credentials missing'
+                    }
+                    status={loading ? 'loading' : gmailReady ? 'done' : 'pending'}
+                  />
+                  <SetupStep
+                    index={2}
+                    title="Base CV"
+                    body={
+                      cvReady
+                        ? 'CV source is available'
+                        : documentsReady
+                          ? 'Upload or mark one document as Base CV'
+                          : 'Upload your master CV'
+                    }
+                    status={props.documents.loading ? 'loading' : cvReady ? 'done' : 'pending'}
+                  />
+                  <SetupStep
+                    index={3}
+                    title="Candidate profile"
+                    body={
+                      profileReady
+                        ? `${cleanDisplayName(props.profile.data?.display_name)} is ready`
+                        : 'Build from the Base CV'
+                    }
+                    status={props.profile.loading ? 'loading' : profileReady ? 'done' : 'pending'}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-8">
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={props.onOpenSetup}
+                    disabled={!gmailReady}
+                    className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Set up profile
+                  </button>
                 <button
                   type="button"
                   onClick={props.onEnterDashboard}
                   disabled={!gmailReady}
-                  className="rounded-md border border-slate-300 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {gmailReady ? 'Open workspace' : 'Dashboard locked'}
+                  Open workspace
                 </button>
               </div>
 
-              {!gmailReady ? (
-                <p className="mt-3 text-sm text-slate-500">
-                  Gmail authentication is required before opening the workspace.
-                </p>
-              ) : null}
-
               {props.operationMessage ? (
-                <div className="mt-5 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                   {props.operationMessage}
                 </div>
               ) : null}
               {props.operationError ? (
-                <div className="mt-5 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                <div className="mt-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
                   {props.operationError}
                 </div>
               ) : null}
-            </div>
-
-            <div className="space-y-3">
-              <SetupStep
-                index={1}
-                title="Gmail OAuth"
-                body={
-                  gmailReady
-                    ? 'Gmail is authenticated. The inbox agent can sync and classify recruiter signals.'
-                    : props.gmailStatus.data?.credentials_file_exists
-                      ? 'Connect your Gmail account so CareerOps can read relevant alerts and recruiter emails.'
-                      : 'Gmail credentials are missing in the backend environment.'
-                }
-                status={loading ? 'loading' : gmailReady ? 'done' : 'pending'}
-              />
-              <SetupStep
-                index={2}
-                title="Evidence documents"
-                body={
-                  documentsReady
-                    ? `${props.documents.data.length} source document(s) are stored for profile extraction.`
-                    : 'Upload your CV, LinkedIn PDF/text, and LaTeX template before generating tailored materials.'
-                }
-                status={props.documents.loading ? 'loading' : documentsReady ? 'done' : 'pending'}
-              />
-              <SetupStep
-                index={3}
-                title="Candidate profile"
-                body={
-                  profileReady
-                    ? `${cleanDisplayName(props.profile.data?.display_name)} is ready for scoring and CV tailoring.`
-                    : 'Run the AI profile agent after uploading documents. The system will use only supported evidence.'
-                }
-                status={props.profile.loading ? 'loading' : profileReady ? 'done' : 'pending'}
-              />
+              </div>
             </div>
           </div>
         </section>
@@ -872,7 +938,7 @@ function App() {
     INITIAL_GMAIL_CONNECTED ? GMAIL_CONNECTED_MESSAGE : null,
   )
   const [operationError, setOperationError] = useState<string | null>(null)
-  const [documentSourceType, setDocumentSourceType] = useState('linkedin')
+  const [documentSourceType, setDocumentSourceType] = useState('cv')
   const [selectedDocument, setSelectedDocument] = useState<File | null>(null)
   const [localDocumentPath, setLocalDocumentPath] = useState(
     'C:\\Users\\Jdela\\OneDrive - University of South Florida\\Escritorio\\resume\\resume\\pdf\\jose_david_gomez_resume_master_full_en.pdf',
@@ -1045,6 +1111,7 @@ function App() {
   const approvedDraftCount = selectedJobDrafts.data.filter(
     (draft) => draft.status === 'approved',
   ).length
+  const workspaceUnlocked = dashboardUnlocked || Boolean(gmailStatusState.data?.authenticated)
 
   const getEmailApplicationOptions = (email: Email) => {
     const companyNeedle = normalizeForMatch(email.company_name ?? email.from_name)
@@ -1148,14 +1215,16 @@ function App() {
       })
       setSelectedDocument(null)
       await loadResource<DocumentRecord[]>('/documents', setDocuments, [])
-      return `Uploaded ${selectedDocument.name}. You can now extract the profile from stored sources.`
+      return documentSourceType === 'cv'
+        ? `Uploaded ${selectedDocument.name}. Build profile is ready.`
+        : `Uploaded ${selectedDocument.name}.`
     })
   }
 
   async function handleExtractProfile() {
     await runOperation('extract-profile', async () => {
       if (!latestCvDocument) {
-        throw new Error('Upload your base CV as source type "Base CV" before building the profile.')
+        throw new Error('Upload your master resume as source type "Base CV" before building the profile.')
       }
       const extractedProfile = await requestApi<CandidateProfile>('/agents/profile/run', {
         method: 'POST',
@@ -1195,7 +1264,7 @@ function App() {
         loadResource<Email[]>('/emails', setEmails, []),
         loadResource<GmailStatus | null>('/gmail/status', setGmailStatusState, null),
       ])
-      return `Gmail incremental sync finished: ${syncedEmails.length} new relevant emails normalized and classified.`
+      return `Inbox refresh finished: ${syncedEmails.length} new relevant email(s) classified.`
     })
   }
 
@@ -1206,7 +1275,7 @@ function App() {
       })
       await loadResource<GmailStatus | null>('/gmail/status', setGmailStatusState, null)
       return status.authenticated
-        ? 'Gmail OAuth completed. You can now sync recruiter emails and LinkedIn alerts.'
+        ? 'Google connected.'
         : 'Gmail OAuth finished, but the token was not detected yet. Refresh status and try again.'
     })
   }
@@ -1215,7 +1284,7 @@ function App() {
     await runOperation('gmail-web-oauth', async () => {
       const result = await requestApi<GmailOAuthStart>('/gmail/oauth/start')
       window.location.href = result.authorization_url
-      return `Gmail OAuth opened. Redirect URI: ${result.redirect_uri}`
+      return `Opening Google sign-in: ${result.redirect_uri}`
     })
   }
 
@@ -1571,7 +1640,7 @@ function App() {
     }
   }
 
-  if (!dashboardUnlocked) {
+  if (!workspaceUnlocked) {
     return (
       <SetupHome
         gmailStatus={gmailStatusState}
@@ -1919,19 +1988,9 @@ function App() {
               <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <Panel
                   title="Profile setup"
-                  subtitle="Upload CV, LinkedIn export, or LaTeX template files, then rebuild the structured candidate profile from stored evidence."
+                  subtitle="Upload the master CV first. CareerOps builds the profile from stored evidence."
                 >
                   <div className="space-y-4">
-                    <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-sm font-medium text-slate-900">
-                        Safe LinkedIn workflow
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-slate-700">
-                        CareerOps uses your exported PDF or copied LinkedIn text as a document
-                        source. It does not automate LinkedIn login, browsing, or scraping.
-                      </p>
-                    </div>
-
                     <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
                       <label className="block">
                         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1942,8 +2001,8 @@ function App() {
                           onChange={(event) => setDocumentSourceType(event.target.value)}
                           className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
                         >
-                          <option value="linkedin">LinkedIn PDF/text</option>
                           <option value="cv">Base CV</option>
+                          <option value="linkedin">LinkedIn PDF/text</option>
                           <option value="manual">Manual profile note</option>
                           <option value="portfolio">Portfolio/GitHub note</option>
                         </select>
@@ -1978,24 +2037,20 @@ function App() {
                       <button
                         type="button"
                         onClick={() => void handleExtractProfile()}
-                        disabled={operationMutating['extract-profile']}
+                        disabled={operationMutating['extract-profile'] || !latestCvDocument}
                         className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {operationMutating['extract-profile']
                           ? 'Extracting...'
-                          : 'Build profile'}
+                          : latestCvDocument
+                            ? 'Build profile'
+                            : 'Upload CV first'}
                       </button>
                     </div>
 
-                    <div className="rounded-md border border-sky-200 bg-sky-50 p-4">
+                    <div className="rounded-md border border-slate-200 bg-white p-4">
                       <p className="text-sm font-medium text-sky-950">
-                        AI profile extraction with LangGraph
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-sky-900">
-                        This path uses your OpenAI project and the profile agent to read only
-                        the stored CV document, extract supported facts, and rebuild the
-                        structured profile with evidence. No unsupported experience should be
-                        invented.
+                        LangGraph profile agent
                       </p>
 
                       {IS_LOCAL_API ? (
@@ -2036,14 +2091,11 @@ function App() {
                         >
                           {operationMutating['ai-profile-latest-cv']
                             ? 'Refreshing AI profile...'
-                            : 'Run AI profile agent on latest CV'}
+                            : latestCvDocument
+                              ? 'Run on latest CV'
+                              : 'Upload CV first'}
                         </button>
                       </div>
-
-                      <p className="mt-3 text-xs text-sky-800">
-                        Model policy: `gpt-5-mini` for profile extraction, because this is a
-                        high-value step and still relatively cheap.
-                      </p>
                     </div>
 
                     <ResourceBanner title="Documents" state={documents} />
@@ -2071,7 +2123,7 @@ function App() {
                       {documents.data.length === 0 ? (
                         <EmptyState
                           title="No documents uploaded"
-                          body="Upload the LinkedIn PDF and your LaTeX CV/template before rebuilding the profile."
+                          body="Upload your master CV to build the candidate profile."
                         />
                       ) : null}
                     </div>
@@ -2080,7 +2132,7 @@ function App() {
 
                 <Panel
                   title="Agent controls"
-                  subtitle="Run the daily workflow manually while we are still local: discovery, Gmail sync, and notification summary."
+                  subtitle="Refresh the data pipeline when you need a current view."
                 >
                   <div className="space-y-5">
                     <div className="grid gap-3 md:grid-cols-2">
@@ -2089,8 +2141,8 @@ function App() {
                         value={gmailStatusState.data?.authenticated ? 'Ready' : 'Needs auth'}
                         note={
                           gmailStatusState.data?.token_file_exists
-                            ? 'OAuth token found locally'
-                            : 'Run Gmail auth before syncing'
+                            ? 'Connected'
+                            : 'Sign in required'
                         }
                       />
                       <MetricCard
@@ -2106,12 +2158,14 @@ function App() {
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                           <p className="text-sm font-medium text-slate-900">
-                            Gmail OAuth
+                            Google
                           </p>
                           <p className="mt-1 text-sm leading-6 text-slate-600">
-                            Credentials file:{' '}
-                            {gmailStatusState.data?.credentials_file_exists ? 'found' : 'missing'}.
-                            Token: {gmailStatusState.data?.token_file_exists ? 'stored' : 'not stored'}.
+                            {gmailStatusState.data?.authenticated
+                              ? 'Connected'
+                              : gmailStatusState.data?.credentials_file_exists
+                                ? 'Ready for sign-in'
+                                : 'Not configured'}
                           </p>
                         </div>
                         {IS_LOCAL_API ? (
@@ -2131,9 +2185,9 @@ function App() {
                                 : 'Authenticate Gmail'}
                           </button>
                         ) : null}
-                        <button
-                          type="button"
-                          onClick={() => void handleStartGmailWebOAuth()}
+                      <button
+                        type="button"
+                        onClick={() => void handleStartGmailWebOAuth()}
                           disabled={
                             operationMutating['gmail-web-oauth'] ||
                             !gmailStatusState.data?.credentials_file_exists
@@ -2144,24 +2198,14 @@ function App() {
                             ? 'Opening OAuth...'
                             : gmailStatusState.data?.authenticated
                               ? 'Reconnect Google'
-                              : 'Sign in with Google'}
+                              : 'Continue with Google'}
                         </button>
                       </div>
-                      <p className="mt-3 text-xs text-slate-500">
-                        This opens the Google OAuth web flow. CareerOps uses readonly and compose
-                        scopes, and still never sends email automatically.
-                      </p>
                     </div>
 
                     <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
                       <p className="text-sm font-medium text-amber-950">
                         AI inbox triage
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-amber-900">
-                        The email agent does not read your full inbox. It first filters for
-                        career-related, unlinked emails. Gmail sync is incremental by default,
-                        so new messages are normalized and classified as they arrive instead of
-                        reprocessing the whole mailbox.
                       </p>
                       <div className="mt-4 grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)]">
                         <label className="block">
@@ -2193,19 +2237,11 @@ function App() {
                           </button>
                         </div>
                       </div>
-                      <p className="mt-3 text-xs text-amber-800">
-                        Model policy: `gpt-5-nano` for inbox triage to keep costs tight.
-                      </p>
                     </div>
 
                     <div className="rounded-md border border-sky-200 bg-sky-50 p-4">
                       <p className="text-sm font-medium text-sky-950">
-                        Semantic matching with pgvector
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-sky-900">
-                        Builds embeddings for your verified profile and recent jobs using the
-                        low-cost embedding model. Job scoring can then cite semantic evidence
-                        in addition to rule-based skill matches.
+                        Semantic matching
                       </p>
                       <button
                         type="button"
@@ -2239,7 +2275,7 @@ function App() {
                         }
                         className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {operationMutating['sync-gmail'] ? 'Syncing...' : 'Sync Gmail'}
+                        {operationMutating['sync-gmail'] ? 'Refreshing...' : 'Refresh inbox'}
                       </button>
                       <button
                         type="button"
@@ -2251,8 +2287,8 @@ function App() {
                         className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {operationMutating['sync-linkedin']
-                          ? 'Syncing LinkedIn...'
-                          : 'Sync LinkedIn via Gmail'}
+                          ? 'Refreshing LinkedIn...'
+                          : 'Refresh LinkedIn alerts'}
                       </button>
                       <button
                         type="button"
@@ -2283,11 +2319,6 @@ function App() {
                       </button>
                     </div>
 
-                    <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-                      Login for the CareerOps web app is not enabled yet because this is still
-                      a local single-user build. Gmail OAuth is already configured; app-level
-                      login should be added before cloud deploy.
-                    </div>
                   </div>
                 </Panel>
               </div>

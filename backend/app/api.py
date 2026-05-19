@@ -354,16 +354,44 @@ def start_gmail_oauth() -> dict[str, str]:
 
 
 @router.get("/gmail/oauth/callback", response_model=None)
-def finish_gmail_oauth(code: str, state: str | None = None):
+def finish_gmail_oauth(code: str, state: str | None = None, db: Session = Depends(get_db)):
     try:
         gmail_auth_status = complete_gmail_web_oauth(code=code, state=state)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+
+    post_auth_sync = "done"
+    synced_email_count = 0
+    linked_jobs_count = 0
+    try:
+        synced_emails = sync_gmail_messages(
+            db,
+            query="category:primary newer_than:30d",
+            max_results=25,
+            skip_existing=True,
+        )
+        linkedin_result = sync_linkedin_activity(db, newer_than_days=90, max_results=50)
+        synced_email_count = len(synced_emails)
+        linked_jobs_count = linkedin_result.normalized_jobs_created
+    except Exception:
+        post_auth_sync = "failed"
+
     frontend_url = get_settings().frontend_app_url
     if frontend_url:
         separator = "&" if "?" in frontend_url else "?"
-        return RedirectResponse(f"{frontend_url}{separator}gmail=connected")
-    return gmail_auth_status
+        return RedirectResponse(
+            f"{frontend_url}{separator}gmail=connected&sync={post_auth_sync}"
+            f"&emails={synced_email_count}&jobs={linked_jobs_count}"
+        )
+    return {
+        "credentials_file_exists": gmail_auth_status.credentials_file_exists,
+        "token_file_exists": gmail_auth_status.token_file_exists,
+        "authenticated": gmail_auth_status.authenticated,
+        "scopes": gmail_auth_status.scopes,
+        "post_auth_sync": post_auth_sync,
+        "synced_email_count": synced_email_count,
+        "linked_jobs_count": linked_jobs_count,
+    }
 
 
 @router.post("/gmail/sync", response_model=list[EmailRead], status_code=status.HTTP_201_CREATED)
