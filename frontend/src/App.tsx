@@ -3,6 +3,14 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api/v1'
 const CAREEROPS_API_KEY = import.meta.env.VITE_CAREEROPS_API_KEY ?? ''
+const API_HOSTNAME = (() => {
+  try {
+    return new URL(API_BASE_URL).hostname
+  } catch {
+    return ''
+  }
+})()
+const IS_LOCAL_API = API_HOSTNAME === '127.0.0.1' || API_HOSTNAME === 'localhost'
 
 type Company = {
   id: string
@@ -1970,30 +1978,34 @@ function App() {
                         invented.
                       </p>
 
-                      <label className="mt-4 block">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-sky-800">
-                          Local CV path
-                        </span>
-                        <input
-                          type="text"
-                          value={localDocumentPath}
-                          onChange={(event) => setLocalDocumentPath(event.target.value)}
-                          className="mt-2 w-full rounded-md border border-sky-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
-                          placeholder="C:\Users\you\...\resume.pdf"
-                        />
-                      </label>
+                      {IS_LOCAL_API ? (
+                        <label className="mt-4 block">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-sky-800">
+                            Local CV path
+                          </span>
+                          <input
+                            type="text"
+                            value={localDocumentPath}
+                            onChange={(event) => setLocalDocumentPath(event.target.value)}
+                            className="mt-2 w-full rounded-md border border-sky-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                            placeholder="C:\Users\you\...\resume.pdf"
+                          />
+                        </label>
+                      ) : null}
 
                       <div className="mt-4 flex flex-wrap gap-3">
-                        <button
-                          type="button"
-                          onClick={() => void handleImportLocalCvAndRunAiProfileAgent()}
-                          disabled={operationMutating['ai-profile-import-run']}
-                          className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {operationMutating['ai-profile-import-run']
-                            ? 'Running AI profile agent...'
-                            : 'Import local CV + run AI profile agent'}
-                        </button>
+                        {IS_LOCAL_API ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleImportLocalCvAndRunAiProfileAgent()}
+                            disabled={operationMutating['ai-profile-import-run']}
+                            className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {operationMutating['ai-profile-import-run']
+                              ? 'Running AI profile agent...'
+                              : 'Import local CV + run AI profile agent'}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => void handleRunAiProfileAgentOnLatestCv()}
@@ -2082,21 +2094,23 @@ function App() {
                             Token: {gmailStatusState.data?.token_file_exists ? 'stored' : 'not stored'}.
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => void handleRunGmailAuth()}
-                          disabled={
-                            operationMutating['gmail-auth'] ||
-                            !gmailStatusState.data?.credentials_file_exists
-                          }
-                          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {operationMutating['gmail-auth']
-                            ? 'Waiting for Google...'
-                            : gmailStatusState.data?.authenticated
-                              ? 'Refresh Gmail OAuth'
-                            : 'Authenticate Gmail'}
-                        </button>
+                        {IS_LOCAL_API ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleRunGmailAuth()}
+                            disabled={
+                              operationMutating['gmail-auth'] ||
+                              !gmailStatusState.data?.credentials_file_exists
+                            }
+                            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {operationMutating['gmail-auth']
+                              ? 'Waiting for Google...'
+                              : gmailStatusState.data?.authenticated
+                                ? 'Refresh Gmail OAuth'
+                                : 'Authenticate Gmail'}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => void handleStartGmailWebOAuth()}
@@ -2112,8 +2126,8 @@ function App() {
                         </button>
                       </div>
                       <p className="mt-3 text-xs text-slate-500">
-                        This opens the Google OAuth flow from the local backend. CareerOps uses
-                        readonly and compose scopes, and still never sends email automatically.
+                        This opens the Google OAuth web flow. CareerOps uses readonly and compose
+                        scopes, and still never sends email automatically.
                       </p>
                     </div>
 
