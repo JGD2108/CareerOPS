@@ -1046,6 +1046,16 @@ function App() {
     void loadResource<NotificationSummary[]>('/notifications/daily-summary', setSummaries, [])
   }, [])
 
+  useEffect(() => {
+    if (gmailStatusState.data?.authenticated) {
+      return
+    }
+    const timer = window.setInterval(() => {
+      void loadResource<GmailStatus | null>('/gmail/status', setGmailStatusState, null)
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [gmailStatusState.data?.authenticated])
+
   const effectiveSelectedJobId = selectedJobId ?? jobs.data[0]?.id ?? null
   const effectiveSelectedApplicationId =
     selectedApplicationId ?? applications.data[0]?.id ?? null

@@ -14,10 +14,11 @@ The system will help discover relevant roles, analyze job fit against a verified
 
 ## Current Status
 
-CareerOps is now a local MVP that covers phases 0-11 and has started phase 12/13 hardening:
+CareerOps is now a local-first desktop MVP. The app runs as an Electron desktop shell, FastAPI runs on your machine, and PostgreSQL/pgvector runs in Docker.
 
-- FastAPI backend with PostgreSQL/pgvector-ready schema.
-- React/Vite dashboard.
+- Electron desktop app with React/Vite UI.
+- FastAPI backend running locally on `127.0.0.1:8000`.
+- PostgreSQL/pgvector running locally through Docker.
 - Document ingestion for CV, LinkedIn exports, LaTeX templates, PDF, DOCX, TXT, and Markdown.
 - LangGraph/OpenAI-backed agents for profile ingestion, email triage, and CV planning.
 - Job discovery through Greenhouse, Lever, Ashby, and safe LinkedIn/Gmail alert ingestion.
@@ -26,11 +27,34 @@ CareerOps is now a local MVP that covers phases 0-11 and has started phase 12/13
 - LaTeX/PDF CV generation using verified profile evidence only.
 - Message drafts and application tracker with human approval.
 - Daily summaries, audit logs, and next actions.
-- Initial pytest coverage, Dockerfiles, CI workflow, architecture docs, and deploy guide.
-- Optional single-user API key auth for private deployments.
+- Initial pytest coverage, Dockerfiles, CI workflow, architecture docs, and local desktop runbook.
 - pgvector semantic matching with OpenAI `text-embedding-3-small` embeddings.
 
-## Local Development
+## Local Desktop Quick Start
+
+```powershell
+git clone https://github.com/JGD2108/CareerOPS.git
+cd CareerOPS
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-local.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start-desktop.ps1
+```
+
+This starts:
+
+- Docker PostgreSQL/pgvector on `localhost:5433`
+- FastAPI on `http://127.0.0.1:8000`
+- Vite on `http://127.0.0.1:5173`
+- Electron as the desktop app window
+
+Stop local services:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop-local.ps1
+```
+
+## Manual Local Development
+
+Use this if you want each service in its own terminal.
 
 ```powershell
 docker compose up -d db
@@ -44,11 +68,19 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-Open:
+Then start the desktop UI:
+
+```powershell
+cd frontend
+npm install
+npm run desktop:dev
+```
+
+Useful local URLs:
 
 - API health: http://127.0.0.1:8000/health
 - API docs: http://127.0.0.1:8000/docs
-- Dashboard: http://127.0.0.1:5173
+- Vite UI: http://127.0.0.1:5173
 
 ## Run Tests
 
@@ -65,15 +97,20 @@ Frontend:
 cd frontend
 npm run lint
 npm run build
+npm run desktop:build
 ```
 
-## Gmail OAuth From Dashboard
+`desktop:build` creates an unpacked local executable at `dist-desktop\win-unpacked\CareerOps Agent.exe`.
+
+## Gmail OAuth Local Setup
 
 1. Put the desktop OAuth JSON at `storage/secrets/gmail_credentials.json`.
-2. Open the dashboard setup page.
-3. Click **Authenticate Gmail** for local desktop OAuth, or **Open web OAuth URL** for redirect-based OAuth.
-4. Complete the Google flow in the browser.
-5. Return to CareerOps and run **Sync Gmail** or **Sync LinkedIn via Gmail**.
+2. In Google Cloud, add this authorized redirect URI:
+   `http://127.0.0.1:8000/api/v1/gmail/oauth/callback`
+3. Open the Electron app.
+4. Click **Continue with Google**.
+5. Complete the Google flow in the browser.
+6. Return to CareerOps. The app polls local FastAPI and unlocks when the token is stored.
 
 CareerOps uses Gmail readonly/compose scopes and does not send email automatically.
 
@@ -92,17 +129,10 @@ Invoke-RestMethod -Method Post `
 
 This uses `text-embedding-3-small` to keep costs low.
 
-## Docker Run
-
-```powershell
-docker compose up --build
-docker compose exec backend alembic upgrade head
-```
-
 ## Documentation
 
 - Architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- Deployment: [`DEPLOYMENT.md`](DEPLOYMENT.md)
+- Local desktop runbook: [`docs/LOCAL_DESKTOP.md`](docs/LOCAL_DESKTOP.md)
 - Gap tracking: [`docs/gap-tracking.md`](docs/gap-tracking.md)
 - Task board: [`docs/task-board.md`](docs/task-board.md)
 
