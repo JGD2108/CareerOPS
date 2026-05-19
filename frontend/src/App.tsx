@@ -852,9 +852,7 @@ function SetupHome(props: {
 
 function App() {
   const [activeSection, setActiveSection] = useState<AppSection>('overview')
-  const [dashboardUnlocked, setDashboardUnlocked] = useState(
-    () => window.location.hash === '#dashboard',
-  )
+  const [dashboardUnlocked, setDashboardUnlocked] = useState(false)
   const [jobSearch, setJobSearch] = useState('')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null)
@@ -1216,7 +1214,7 @@ function App() {
   function enterDashboard(section: AppSection = 'overview') {
     setActiveSection(section)
     setDashboardUnlocked(true)
-    window.history.replaceState(null, '', '#dashboard')
+    window.history.replaceState(null, '', window.location.pathname)
   }
 
   async function handleRebuildEmbeddings() {
