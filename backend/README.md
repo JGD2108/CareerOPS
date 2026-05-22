@@ -24,6 +24,7 @@ uvicorn app.main:app --reload
 - `PATCH /api/v1/applications/{id}`: updates tracker status or notes.
 - `POST /api/v1/documents/upload`: uploads a CV, LinkedIn PDF, template, or manual source.
 - `GET /api/v1/documents`: lists uploaded sources.
+- `POST /api/v1/documents/import-local`: imports a local file only when it lives under an approved folder from `LOCAL_DOCUMENT_ALLOWED_ROOTS`.
 - `POST /api/v1/profile/extract`: extracts structured profile data from the latest CV source.
 - `GET /api/v1/profile`: returns the structured profile and evidence.
 - `POST /api/v1/jobs/{job_id}/score`: scores a job against the structured profile.
@@ -130,6 +131,20 @@ Then restart FastAPI:
 ```powershell
 uvicorn app.main:app --reload
 ```
+
+The scheduler now uses a lock file so duplicate local processes do not run the same saved discovery job at the same time. You can override the lock location with `SCHEDULER_LOCK_FILE`.
+
+## Local Desktop Security Notes
+
+- `APP_API_KEY` is no longer intended to be embedded in the Vite bundle.
+- For the desktop/local loopback flow, keep `ALLOW_LOOPBACK_AUTH_BYPASS=true` so Electron and localhost clients can talk to FastAPI without shipping a static secret to the browser bundle.
+- For stricter non-local environments, set `ALLOW_LOOPBACK_AUTH_BYPASS=false` and provide `APP_API_KEY` out of band.
+
+## Local Document Import Guardrails
+
+- `POST /api/v1/documents/import-local` only accepts `.pdf`, `.docx`, `.txt`, `.md`, and `.tex`.
+- Files must live under one of the comma-separated roots in `LOCAL_DOCUMENT_ALLOWED_ROOTS`.
+- The default allowlist is `~/Documents,~/Desktop,~/Downloads,../storage`.
 
 ## Gmail Setup (Local Desktop OAuth)
 

@@ -1,0 +1,23 @@
+{
+  "id": "8f401281-08b2-40f2-9158-f3333f3f4f87",
+  "timestamp": "2026-05-19T16:29:26.894394Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24355,
+  "output_len": 345,
+  "estimated_input_tokens": 6213,
+  "estimated_output_tokens": 86,
+  "estimated_total_tokens": 6300,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No action needed",
+    "reasoning": "LinkedIn saved-jobs notification; marketing/alerts about saved jobs rather than a specific job application, recruiter follow-up, or interview status."
+  }
+}

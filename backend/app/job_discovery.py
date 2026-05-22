@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session, joinedload
 
 from app import crud
 from app.audit import write_audit_log
+from app.job_availability import derive_availability_from_payload, extract_job_source_dates
+from app.job_controls import is_job_dismissed
 from app.job_fit import ensure_job_score
 from app.models import Application, ApplicationStatus, Company, DiscoveryRun, DiscoverySource, Job, RawJob
 from app.profile_ingestion import get_profile
@@ -27,6 +29,8 @@ from app.schemas import (
 GREENHOUSE_BASE_URL = "https://boards-api.greenhouse.io/v1/boards"
 LEVER_BASE_URL = "https://api.lever.co/v0/postings"
 ASHBY_BASE_URL = "https://api.ashbyhq.com/posting-api/job-board"
+SMARTRECRUITERS_BASE_URL = "https://api.smartrecruiters.com/v1/companies"
+WORKDAY_BASE_URL = "https://{tenant}.wd5.myworkdayjobs.com/wday/cxs/{tenant}/jobs"
 
 
 @dataclass
@@ -41,6 +45,10 @@ class NormalizedDiscoveredJob:
     work_mode: str | None
     seniority: str | None
     job_url: str | None
+    posted_at: datetime | None
+    application_deadline: datetime | None
+    availability_status: str
+    availability_reason: str | None
     raw_payload: dict
 
 
@@ -106,6 +114,8 @@ def _greenhouse_jobs(payload: dict, source_config: JobDiscoverySourceConfig) -> 
     for item in payload.get("jobs", []):
         description = item.get("content") or ""
         location_name = (item.get("location") or {}).get("name")
+        posted_at, application_deadline = extract_job_source_dates(item)
+        availability_status, availability_reason = derive_availability_from_payload(item, description)
         jobs.append(
             NormalizedDiscoveredJob(
                 source="greenhouse",
@@ -118,6 +128,10 @@ def _greenhouse_jobs(payload: dict, source_config: JobDiscoverySourceConfig) -> 
                 work_mode=_derive_work_mode(location_name, description),
                 seniority=_derive_seniority(item.get("title", ""), description),
                 job_url=item.get("absolute_url"),
+                posted_at=posted_at,
+                application_deadline=application_deadline,
+                availability_status=availability_status,
+                availability_reason=availability_reason,
                 raw_payload=item,
             )
         )
@@ -131,6 +145,8 @@ def _lever_jobs(payload: list[dict], source_config: JobDiscoverySourceConfig) ->
         description = item.get("descriptionPlain") or item.get("description") or ""
         categories = item.get("categories") or {}
         location_name = categories.get("location")
+        posted_at, application_deadline = extract_job_source_dates(item)
+        availability_status, availability_reason = derive_availability_from_payload(item, description)
         jobs.append(
             NormalizedDiscoveredJob(
                 source="lever",
@@ -143,6 +159,10 @@ def _lever_jobs(payload: list[dict], source_config: JobDiscoverySourceConfig) ->
                 work_mode=_derive_work_mode(location_name, categories.get("commitment")),
                 seniority=_derive_seniority(item.get("text", ""), description),
                 job_url=item.get("hostedUrl"),
+                posted_at=posted_at,
+                application_deadline=application_deadline,
+                availability_status=availability_status,
+                availability_reason=availability_reason,
                 raw_payload=item,
             )
         )
@@ -155,6 +175,8 @@ def _ashby_jobs(payload: dict, source_config: JobDiscoverySourceConfig) -> list[
     for item in payload.get("jobs", []):
         description = item.get("descriptionPlain") or item.get("descriptionHtml") or ""
         location_name = item.get("location")
+        posted_at, application_deadline = extract_job_source_dates(item)
+        availability_status, availability_reason = derive_availability_from_payload(item, description)
         jobs.append(
             NormalizedDiscoveredJob(
                 source="ashby",
@@ -167,6 +189,102 @@ def _ashby_jobs(payload: dict, source_config: JobDiscoverySourceConfig) -> list[
                 work_mode=_derive_work_mode(location_name, item.get("workplaceType")),
                 seniority=_derive_seniority(item.get("title", ""), description),
                 job_url=item.get("jobUrl") or item.get("applyUrl"),
+                posted_at=posted_at,
+                application_deadline=application_deadline,
+                availability_status=availability_status,
+                availability_reason=availability_reason,
+                raw_payload=item,
+            )
+        )
+    return jobs
+
+
+def _smartrecruiters_jobs(payload: dict, source_config: JobDiscoverySourceConfig) -> list[NormalizedDiscoveredJob]:
+    jobs = []
+    company_name = source_config.company_name_override or source_config.company_key
+    for item in payload.get("content", []):
+        description = item.get("jobAd") or item.get("description") or item.get("summary") or ""
+        if isinstance(description, dict):
+            description = description.get("text") or description.get("html") or description.get("description") or ""
+
+        location_value = item.get("location") or {}
+        if isinstance(location_value, dict):
+            location_name = (
+                location_value.get("city")
+                or location_value.get("country")
+                or location_value.get("label")
+                or location_value.get("text")
+            )
+        else:
+            location_name = location_value
+
+        title = (item.get("name") or item.get("title") or "").strip()
+        posted_at, application_deadline = extract_job_source_dates(item)
+        availability_status, availability_reason = derive_availability_from_payload(item, description)
+        jobs.append(
+            NormalizedDiscoveredJob(
+                source="smartrecruiters",
+                source_company_key=source_config.company_key,
+                external_job_id=str(item.get("id") or item.get("refNum") or item.get("uuid") or title),
+                company_name=company_name,
+                title=title,
+                description=description,
+                location=location_name,
+                work_mode=_derive_work_mode(location_name, item.get("type")),
+                seniority=_derive_seniority(title, description),
+                job_url=item.get("applyUrl") or item.get("url") or item.get("jobUrl"),
+                posted_at=posted_at,
+                application_deadline=application_deadline,
+                availability_status=availability_status,
+                availability_reason=availability_reason,
+                raw_payload=item,
+            )
+        )
+    return jobs
+
+
+def _workday_jobs(payload: dict, source_config: JobDiscoverySourceConfig) -> list[NormalizedDiscoveredJob]:
+    jobs = []
+    company_name = source_config.company_name_override or source_config.company_key
+    for item in payload.get("jobPostings", []) or payload.get("jobs", []):
+        title = (item.get("title") or item.get("jobTitle") or item.get("heading") or "").strip()
+        description = item.get("jobDescription") or item.get("description") or item.get("snippet") or ""
+        if isinstance(description, dict):
+            description = description.get("text") or description.get("html") or description.get("description") or ""
+
+        location_name = (
+            item.get("locationsText")
+            or item.get("locationText")
+            or item.get("location")
+            or item.get("country")
+            or item.get("city")
+        )
+        if isinstance(location_name, list):
+            location_name = ", ".join(str(part) for part in location_name if part)
+
+        external_job_id = str(item.get("externalPath") or item.get("jobPostingId") or title)
+        job_url = item.get("externalPath") or item.get("applyUrl") or item.get("url")
+        if job_url and job_url.startswith("/"):
+            job_url = f"https://{source_config.company_key}.wd5.myworkdayjobs.com{job_url}"
+        posted_at, application_deadline = extract_job_source_dates(item)
+        availability_status, availability_reason = derive_availability_from_payload(item, description)
+
+        jobs.append(
+            NormalizedDiscoveredJob(
+                source="workday",
+                source_company_key=source_config.company_key,
+                external_job_id=external_job_id,
+                company_name=company_name,
+                title=title,
+                description=description,
+                location=location_name,
+                work_mode=_derive_work_mode(location_name, description),
+                seniority=_derive_seniority(title, description),
+                job_url=job_url,
+                posted_at=posted_at,
+                application_deadline=application_deadline,
+                availability_status=availability_status,
+                availability_reason=availability_reason,
                 raw_payload=item,
             )
         )
@@ -196,6 +314,14 @@ def _fetch_jobs(client: httpx.Client, source_config: JobDiscoverySourceConfig, i
         )
         response.raise_for_status()
         return _ashby_jobs(response.json(), source_config)
+    if source == "smartrecruiters":
+        response = client.get(f"{SMARTRECRUITERS_BASE_URL}/{source_config.company_key}/postings")
+        response.raise_for_status()
+        return _smartrecruiters_jobs(response.json(), source_config)
+    if source == "workday":
+        response = client.get(WORKDAY_BASE_URL.format(tenant=source_config.company_key))
+        response.raise_for_status()
+        return _workday_jobs(response.json(), source_config)
     raise ValueError(f"Unsupported discovery source: {source_config.source}")
 
 
@@ -241,6 +367,10 @@ def _create_normalized_job(db: Session, discovered_job: NormalizedDiscoveredJob)
             work_mode=discovered_job.work_mode,
             seniority=discovered_job.seniority,
             source=discovered_job.source,
+            posted_at=discovered_job.posted_at,
+            application_deadline=discovered_job.application_deadline,
+            availability_status=discovered_job.availability_status,
+            availability_reason=discovered_job.availability_reason,
         ),
     )
 
@@ -343,24 +473,6 @@ def run_saved_discovery_sources(db: Session, trigger_type: str = "manual") -> di
     if not saved_sources:
         raise ValueError("No active discovery sources are configured.")
 
-    source_configs = [
-        JobDiscoverySourceConfig(
-            source=source.source,
-            company_key=source.company_key,
-            company_name_override=source.company_name_override,
-        )
-        for source in saved_sources
-    ]
-
-    merged_filters = JobDiscoveryFilters(
-        role_keywords=sorted({item for source in saved_sources for item in source.role_keywords}),
-        locations=sorted({item for source in saved_sources for item in source.locations}),
-        seniority_terms=sorted({item for source in saved_sources for item in source.seniority_terms}),
-        work_modes=sorted({item for source in saved_sources for item in source.work_modes}),
-    )
-    include_description = any(source.include_description for source in saved_sources)
-    create_applications = any(source.create_applications for source in saved_sources)
-
     run = DiscoveryRun(
         trigger_type=trigger_type,
         status="running",
@@ -375,13 +487,48 @@ def run_saved_discovery_sources(db: Session, trigger_type: str = "manual") -> di
     db.refresh(run)
 
     try:
-        result = discover_jobs(
-            db,
-            sources=source_configs,
-            filters=merged_filters,
-            include_description=include_description,
-            create_applications=create_applications,
-        )
+        aggregate_result = {
+            "raw_jobs_saved": 0,
+            "normalized_jobs_created": 0,
+            "applications_created": 0,
+            "deduplicated_jobs": 0,
+            "auto_scored_jobs": 0,
+            "matched_jobs": [],
+        }
+        matched_jobs_by_id: dict[UUID, Job] = {}
+
+        for source in saved_sources:
+            result = discover_jobs(
+                db,
+                sources=[
+                    JobDiscoverySourceConfig(
+                        source=source.source,
+                        company_key=source.company_key,
+                        company_name_override=source.company_name_override,
+                    )
+                ],
+                filters=JobDiscoveryFilters(
+                    role_keywords=list(source.role_keywords),
+                    locations=list(source.locations),
+                    seniority_terms=list(source.seniority_terms),
+                    work_modes=list(source.work_modes),
+                ),
+                include_description=source.include_description,
+                create_applications=source.create_applications,
+            )
+            for key in (
+                "raw_jobs_saved",
+                "normalized_jobs_created",
+                "applications_created",
+                "deduplicated_jobs",
+                "auto_scored_jobs",
+            ):
+                aggregate_result[key] += result[key]
+            for job in result["matched_jobs"]:
+                matched_jobs_by_id[job.id] = job
+
+        aggregate_result["matched_jobs"] = list(matched_jobs_by_id.values())
+        result = aggregate_result
         run.status = "completed"
         run.raw_jobs_saved = result["raw_jobs_saved"]
         run.normalized_jobs_created = result["normalized_jobs_created"]
@@ -427,6 +574,16 @@ def discover_jobs(
             discovered_jobs = _fetch_jobs(client, source_config, include_description)
             for discovered_job in discovered_jobs:
                 if not _passes_filters(discovered_job, filters):
+                    continue
+                if is_job_dismissed(
+                    db,
+                    source=discovered_job.source,
+                    source_company_key=discovered_job.source_company_key,
+                    external_job_id=discovered_job.external_job_id,
+                    source_url=discovered_job.job_url,
+                    company_name=discovered_job.company_name,
+                    title=discovered_job.title,
+                ):
                     continue
 
                 raw_job = _get_existing_raw_job(

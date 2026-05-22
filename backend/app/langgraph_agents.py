@@ -29,9 +29,18 @@ from app.models import (
 )
 from app.next_action_agent import sync_next_actions
 from app.profile_ingestion import get_profile
+from app.text_normalization import normalize_text_block, normalize_text_list
 
 
 settings = get_settings()
+PROFILE_AGENT_SYSTEM_PROMPT = (
+    "You are the Profile Ingestion Agent for CareerOps. "
+    "You must extract only information that is explicitly supported by the provided candidate document. "
+    "Do not invent experience, technologies, companies, metrics, dates, titles, achievements, education, certifications, or preferences. "
+    "If information is missing or uncertain, return null or an empty list. "
+    "For every skill, project, experience, education, and certification, include evidence_text copied or tightly paraphrased from the source text. "
+    "Preserve honesty and traceability."
+)
 
 
 class ProfileAgentState(TypedDict, total=False):
@@ -74,7 +83,51 @@ def _clean_extracted_display_name(value: str | None) -> str | None:
             cleaned = cleaned.replace(f"{marker} {vowel}", accented).replace(
                 f"{marker}{vowel}", accented
             )
-    return " ".join(cleaned.split())
+    return normalize_text_block(" ".join(cleaned.split()))
+
+
+def _normalize_profile_extraction(extracted: AIProfileExtraction) -> AIProfileExtraction:
+    extracted.display_name = _clean_extracted_display_name(extracted.display_name)
+    extracted.headline = normalize_text_block(extracted.headline)
+    extracted.location = normalize_text_block(extracted.location)
+    extracted.summary = normalize_text_block(extracted.summary)
+    extracted.communication_style = normalize_text_list(extracted.communication_style)
+    extracted.work_preferences = normalize_text_list(extracted.work_preferences)
+
+    for skill in extracted.skills:
+        skill.name = normalize_text_block(skill.name) or skill.name
+        skill.category = normalize_text_block(skill.category)
+        skill.evidence_text = normalize_text_block(skill.evidence_text) or skill.evidence_text
+
+    for experience in extracted.experiences:
+        experience.company = normalize_text_block(experience.company) or experience.company
+        experience.title = normalize_text_block(experience.title) or experience.title
+        experience.location = normalize_text_block(experience.location)
+        experience.start_date = normalize_text_block(experience.start_date)
+        experience.end_date = normalize_text_block(experience.end_date)
+        experience.bullets = normalize_text_list(experience.bullets)
+        experience.evidence_text = normalize_text_block(experience.evidence_text) or experience.evidence_text
+
+    for project in extracted.projects:
+        project.name = normalize_text_block(project.name) or project.name
+        project.description = normalize_text_block(project.description)
+        project.technologies = normalize_text_list(project.technologies)
+        project.impact = normalize_text_block(project.impact)
+        project.evidence_text = normalize_text_block(project.evidence_text) or project.evidence_text
+
+    for education in extracted.education:
+        education.institution = normalize_text_block(education.institution) or education.institution
+        education.degree = normalize_text_block(education.degree) or education.degree
+        education.location = normalize_text_block(education.location)
+        education.dates = normalize_text_block(education.dates)
+        education.evidence_text = normalize_text_block(education.evidence_text) or education.evidence_text
+
+    for certification in extracted.certifications:
+        certification.name = normalize_text_block(certification.name) or certification.name
+        certification.issuer = normalize_text_block(certification.issuer)
+        certification.evidence_text = normalize_text_block(certification.evidence_text) or certification.evidence_text
+
+    return extracted
 
 
 def _looks_career_related(email: Email) -> bool:
@@ -150,43 +203,40 @@ def _load_profile_document(state: ProfileAgentState, db: Session) -> ProfileAgen
     document = db.get(Document, UUID(state["document_id"]))
     if not document or not document.extracted_text:
         raise ValueError("Document not found or has no extracted text.")
+    normalized_text = normalize_text_block(document.extracted_text) or document.extracted_text
     return {
         "document_id": state["document_id"],
         "document": document,
-        "document_text": _truncate_for_model(document.extracted_text),
+        "document_text": _truncate_for_model(normalized_text),
     }
 
 
 def _extract_profile_with_ai(state: ProfileAgentState, _: Session) -> ProfileAgentState:
+    extracted_profile = extract_profile_from_text_with_ai(state["document_text"])
+    return {"extracted_profile": extracted_profile}
+
+
+def extract_profile_from_text_with_ai(document_text: str) -> AIProfileExtraction:
     require_ai_agents_enabled()
-    system_prompt = (
-        "You are the Profile Ingestion Agent for CareerOps. "
-        "You must extract only information that is explicitly supported by the provided candidate document. "
-        "Do not invent experience, technologies, companies, metrics, dates, titles, achievements, education, certifications, or preferences. "
-        "If information is missing or uncertain, return null or an empty list. "
-        "For every skill, project, experience, education, and certification, include evidence_text copied or tightly paraphrased from the source text. "
-        "Preserve honesty and traceability."
-    )
     user_prompt = (
         "Extract the candidate profile from this document.\n\n"
         "Required output:\n"
         "- display_name\n- headline\n- location\n- summary\n- communication_style\n- work_preferences\n"
         "- skills\n- projects\n- experiences\n- education\n- certifications\n\n"
-        f"Document text:\n{state['document_text']}"
+        f"Document text:\n{_truncate_for_model(document_text)}"
     )
-    extracted_profile = generate_structured_output(
+    return generate_structured_output(
         schema_model=AIProfileExtraction,
         schema_name="careerops_profile_extraction",
-        system_prompt=system_prompt,
+        system_prompt=PROFILE_AGENT_SYSTEM_PROMPT,
         user_prompt=user_prompt,
         model=settings.openai_profile_model,
     )
-    return {"extracted_profile": extracted_profile}
 
 
 def _persist_profile_from_ai(state: ProfileAgentState, db: Session) -> ProfileAgentState:
     document = state["document"]
-    extracted = state["extracted_profile"]
+    extracted = _normalize_profile_extraction(state["extracted_profile"])
     profile = _get_or_create_profile(db)
     _clear_profile_details(db, profile.id)
 
@@ -351,8 +401,26 @@ def _load_email_for_agent(state: EmailAgentState, db: Session) -> EmailAgentStat
 
 
 def _triage_email_with_ai(state: EmailAgentState, _: Session) -> EmailAgentState:
-    require_ai_agents_enabled()
     email = state["email"]
+    triage = triage_email_content_with_ai(
+        from_email=email.from_email,
+        from_name=email.from_name,
+        subject=email.subject,
+        snippet=email.snippet,
+        body_text=email.body_text,
+    )
+    return {"triage": triage}
+
+
+def triage_email_content_with_ai(
+    *,
+    from_email: str,
+    from_name: str | None = None,
+    subject: str | None = None,
+    snippet: str | None = None,
+    body_text: str | None = None,
+) -> AIEmailTriage:
+    require_ai_agents_enabled()
     system_prompt = (
         "You are the Email Monitoring Agent for CareerOps. "
         "Read one email at a time and classify only its relevance for the candidate's job search. "
@@ -361,20 +429,19 @@ def _triage_email_with_ai(state: EmailAgentState, _: Session) -> EmailAgentState
         "If the email clearly refers to a job application, recruiter follow-up, interview, assessment, rejection, offer, documents requested, or form pending, classify it accordingly."
     )
     user_prompt = (
-        f"From: {email.from_email}\n"
-        f"From name: {email.from_name or ''}\n"
-        f"Subject: {email.subject or ''}\n"
-        f"Snippet: {email.snippet or ''}\n"
-        f"Body: {_truncate_for_model(email.body_text or '')}\n"
+        f"From: {from_email}\n"
+        f"From name: {from_name or ''}\n"
+        f"Subject: {subject or ''}\n"
+        f"Snippet: {snippet or ''}\n"
+        f"Body: {_truncate_for_model(body_text or '')}\n"
     )
-    triage = generate_structured_output(
+    return generate_structured_output(
         schema_model=AIEmailTriage,
         schema_name="careerops_email_triage",
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         model=settings.openai_email_model,
     )
-    return {"triage": triage}
 
 
 def _persist_email_triage(state: EmailAgentState, db: Session) -> EmailAgentState:

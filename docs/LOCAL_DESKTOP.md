@@ -58,7 +58,9 @@ http://127.0.0.1:8000/api/v1/gmail/oauth/callback
 storage\secrets\gmail_credentials.json
 ```
 
-4. Start CareerOps and click `Continue with Google`.
+4. Or start CareerOps and upload the JSON directly from the onboarding screen with `Load OAuth JSON`.
+
+5. Click `Continue with Google`.
 
 The Google flow opens in the system browser. The Electron app keeps polling local FastAPI and unlocks when `storage\secrets\gmail_token.json` is written.
 

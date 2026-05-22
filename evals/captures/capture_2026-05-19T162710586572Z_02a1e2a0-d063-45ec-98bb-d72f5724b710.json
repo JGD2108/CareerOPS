@@ -1,0 +1,23 @@
+{
+  "id": "02a1e2a0-d063-45ec-98bb-d72f5724b710",
+  "timestamp": "2026-05-19T16:27:10.586572Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 6375,
+  "output_len": 339,
+  "estimated_input_tokens": 1718,
+  "estimated_output_tokens": 84,
+  "estimated_total_tokens": 1803,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "informational",
+    "requires_reply": false,
+    "suggested_action": "No action required",
+    "reasoning": "LinkedIn invitation acceptance; networking activity not related to job applications or recruiter communications."
+  }
+}

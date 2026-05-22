@@ -1,0 +1,23 @@
+{
+  "id": "e3be8646-611f-467c-9aac-1d38238e3b12",
+  "timestamp": "2026-05-19T16:34:35.415383Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24342,
+  "output_len": 409,
+  "estimated_input_tokens": 6210,
+  "estimated_output_tokens": 102,
+  "estimated_total_tokens": 6312,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No action required; this is a generic job alert digest.",
+    "reasoning": "This is a marketing-style job alert digest, not a direct application, recruiter message, interview invitation, or other status update related to an applicant."
+  }
+}

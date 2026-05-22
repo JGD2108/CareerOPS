@@ -1,0 +1,23 @@
+{
+  "id": "2b742e1e-7352-4b85-bec6-092fdcedbd3f",
+  "timestamp": "2026-05-19T16:30:56.166382Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 13739,
+  "output_len": 401,
+  "estimated_input_tokens": 3559,
+  "estimated_output_tokens": 100,
+  "estimated_total_tokens": 3660,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Data Engineer Academy",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "Ignore marketing email; unsubscribe if desired.",
+    "reasoning": "Marketing outreach about landing a data engineering role; no direct job application, interview, recruiter communication, or documents requested referenced."
+  }
+}

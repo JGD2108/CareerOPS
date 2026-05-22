@@ -1,0 +1,23 @@
+{
+  "id": "b3720659-242d-457a-a419-8410648e8558",
+  "timestamp": "2026-05-19T16:33:30.156895Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24310,
+  "output_len": 398,
+  "estimated_input_tokens": 6202,
+  "estimated_output_tokens": 99,
+  "estimated_total_tokens": 6302,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Torc Community",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action needed; this is a marketing newsletter.",
+    "reasoning": "This email is a general community newsletter about events and referrals, not related to your job applications or recruiter communications."
+  }
+}

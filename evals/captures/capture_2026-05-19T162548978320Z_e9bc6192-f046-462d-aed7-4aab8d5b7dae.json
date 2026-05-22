@@ -1,0 +1,23 @@
+{
+  "id": "e9bc6192-f046-462d-aed7-4aab8d5b7dae",
+  "timestamp": "2026-05-19T16:25:48.978320Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 1831,
+  "output_len": 373,
+  "estimated_input_tokens": 582,
+  "estimated_output_tokens": 93,
+  "estimated_total_tokens": 676,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "IdeaProof",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "no_action_needed",
+    "reasoning": "Marketing/newsletter-style email unrelated to job applications, recruiter communications, or interview processes; no action required for career search."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "d15c9a84-59f9-4be6-bcc6-8716e0f8eecf",
+  "timestamp": "2026-05-19T16:35:14.110978Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 6375,
+  "output_len": 369,
+  "estimated_input_tokens": 1718,
+  "estimated_output_tokens": 92,
+  "estimated_total_tokens": 1811,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "/",
+    "requires_reply": false,
+    "suggested_action": "No action required for job search",
+    "reasoning": "LinkedIn invitation accepted; general networking update, not a job application, recruiter contact, interview, assessment, or other job-search related event."
+  }
+}

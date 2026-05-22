@@ -1,0 +1,303 @@
+{
+  "id": "9b794526-9dc0-4782-ae7c-fd7f12944175",
+  "timestamp": "2026-05-19T21:42:11.101746Z",
+  "schema_name": "careerops_profile_extraction",
+  "model": "gpt-5-mini",
+  "system_prompt_len": 528,
+  "user_prompt_len": 7662,
+  "output_len": 19059,
+  "estimated_input_tokens": 2047,
+  "estimated_output_tokens": 4764,
+  "estimated_total_tokens": 6812,
+  "parsed": {
+    "display_name": "Jose David Gómez De La Hoz",
+    "headline": "Software Engineer - Backend, Full-Stack, Data, and AI",
+    "location": "Barranquilla, Colombia",
+    "summary": "Junior software engineer with production experience and a broad technical portfolio across backend systems, full-stack applications, data workflows, automation, and applied AI. My strongest work is building practical systems for real operational workflows: REST APIs, relational models, authentication, reporting, integrations, data pipelines, dashboards, cloud automation, and AI-enabled features. I have worked with NestJS, PostgreSQL, Prisma, React, Electron, Python, FastAPI, BigQuery, Docker, AWS Lambda, Gemini API, and AI-assisted development tools such as Cursor, Claude, ChatGPT, and GitHub Copilot.",
+    "communication_style": [
+      "remote/asynchronous collaboration",
+      "written communication",
+      "technical documentation",
+      "layered debugging",
+      "troubleshooting",
+      "responsible use of AI assistants"
+    ],
+    "work_preferences": [
+      "remote/asynchronous collaboration",
+      "operational-workflow-focused development",
+      "use of AI assistants to speed implementation, testing, and documentation"
+    ],
+    "skills": [
+      {
+        "name": "Python",
+        "category": "Languages / AI / Backend",
+        "evidence_level": "strong",
+        "evidence_text": "Languages: Python ... AI, machine learning, and security: scikit-learn ... Cloud, DevOps, and collaboration: Docker ... KyberVPN / Secure Chat Project - Python, FastAPI, React, REST APIs, Kyber, AES-GCM, CORS, uvicorn"
+      },
+      {
+        "name": "TypeScript",
+        "category": "Languages / Backend / Full-stack",
+        "evidence_level": "strong",
+        "evidence_text": "I have worked with ... TypeScript ... Production full-stack platform: Built and maintained an internal operations platform ... using React, Electron, TypeScript, NestJS, PostgreSQL, and Prisma"
+      },
+      {
+        "name": "JavaScript",
+        "category": "Languages / Frontend",
+        "evidence_level": "strong",
+        "evidence_text": "Languages: ... JavaScript ... Frontend and product UI: React, Electron, Astro, Vite, React Router, TanStack Query, Ant Design"
+      },
+      {
+        "name": "SQL",
+        "category": "Languages / Databases / Data",
+        "evidence_level": "strong",
+        "evidence_text": "Languages: ... SQL ... Databases and data: PostgreSQL, MySQL, BigQuery, Prisma, relational modeling, SQL queries, reporting, audit logging, CSV exports, ETL/ELT"
+      },
+      {
+        "name": "COBOL",
+        "category": "Languages / Academic",
+        "evidence_level": "strong",
+        "evidence_text": "Languages: ... COBOL ... InCollege Academic project - Console-based professional networking application - COBOL, file persistence, automated testing"
+      },
+      {
+        "name": "React",
+        "category": "Frontend",
+        "evidence_level": "strong",
+        "evidence_text": "Frontend and product UI: React, Electron ... Production full-stack platform: Built and maintained ... using React, Electron, TypeScript ... AI-enabled data and microservices platform - React, Node.js, PostgreSQL, Docker, Nginx, Gemini API, pgvector"
+      },
+      {
+        "name": "Electron",
+        "category": "Frontend / Desktop",
+        "evidence_level": "strong",
+        "evidence_text": "Frontend and product UI: React, Electron ... Production full-stack platform: Built and maintained an internal operations platform ... using React, Electron, TypeScript, NestJS, PostgreSQL, and Prisma"
+      },
+      {
+        "name": "NestJS",
+        "category": "Backend",
+        "evidence_level": "strong",
+        "evidence_text": "I have worked with NestJS ... Production full-stack platform: Built and maintained ... using React, Electron, TypeScript, NestJS, PostgreSQL, and Prisma"
+      },
+      {
+        "name": "FastAPI",
+        "category": "Backend",
+        "evidence_level": "strong",
+        "evidence_text": "I have worked with ... FastAPI ... KyberVPN / Secure Chat Project - Python, FastAPI, React, REST APIs, Kyber, AES-GCM, CORS, uvicorn"
+      },
+      {
+        "name": "Express",
+        "category": "Backend",
+        "evidence_level": "strong",
+        "evidence_text": "Backend and integrations: Node.js, NestJS, FastAPI, Express, REST APIs, JWT, bcrypt, CORS, Helmet, throttling, Multer, Swagger/OpenAPI, technical documentation, payload validation, external service integration, and end-to-end debugging."
+      },
+      {
+        "name": "PostgreSQL",
+        "category": "Databases",
+        "evidence_level": "strong",
+        "evidence_text": "Databases and data: PostgreSQL, MySQL, BigQuery, Prisma, relational modeling, SQL queries, reporting, audit logging, CSV exports, ETL/ELT ... AI-enabled data and microservices platform - React, Node.js, PostgreSQL, Docker, Nginx, Gemini API, pgvector"
+      },
+      {
+        "name": "MySQL",
+        "category": "Databases",
+        "evidence_level": "strong",
+        "evidence_text": "Databases and data: PostgreSQL, MySQL, BigQuery, Prisma, relational modeling, SQL queries, reporting, audit logging, CSV exports, ETL/ELT"
+      },
+      {
+        "name": "BigQuery",
+        "category": "Data / Analytics",
+        "evidence_level": "strong",
+        "evidence_text": "Databases and data: PostgreSQL, MySQL, BigQuery, Prisma ... Smoking & Drinking Prediction Platform - Python, scikit-learn, SQL, BigQuery, Dataform, Cloud Workflows, Looker Studio, Astro"
+      },
+      {
+        "name": "Prisma",
+        "category": "ORM / Databases",
+        "evidence_level": "strong",
+        "evidence_text": "I have worked with ... Prisma ... Production full-stack platform: Built and maintained an internal operations platform ... using ... Prisma"
+      },
+      {
+        "name": "Docker",
+        "category": "Cloud / DevOps",
+        "evidence_level": "strong",
+        "evidence_text": "Cloud, DevOps, and collaboration: Docker, Docker Compose ... AI-enabled data and microservices platform: Refactored a monolithic API into a 7-container Docker platform"
+      },
+      {
+        "name": "AWS Lambda",
+        "category": "Cloud / Serverless",
+        "evidence_level": "strong",
+        "evidence_text": "Cloud, DevOps, and collaboration: ... AWS Lambda, S3, EventBridge, boto3 ... ClimateWatch Colombia Project - Serverless environmental data automation - Python, AWS Lambda, S3, EventBridge, boto3, YAML, Open-Meteo APIs"
+      },
+      {
+        "name": "Gemini API",
+        "category": "AI",
+        "evidence_level": "strong",
+        "evidence_text": "I have worked with ... Gemini API ... AI-enabled data and microservices platform - Integrated Gemini for natural-language Q&A over structured records"
+      },
+      {
+        "name": "scikit-learn",
+        "category": "Machine Learning",
+        "evidence_level": "strong",
+        "evidence_text": "AI, machine learning, and security: scikit-learn ... Smoking & Drinking Prediction Platform - Python, scikit-learn, SQL, BigQuery, Dataform, Cloud Workflows, Looker Studio, Astro"
+      },
+      {
+        "name": "pgvector",
+        "category": "Vector DB / Semantic Search",
+        "evidence_level": "strong",
+        "evidence_text": "AI, machine learning, and security: ... pgvector, semantic-search preparation ... AI-enabled data and microservices platform ... prepared semantic-search support with pgvector"
+      },
+      {
+        "name": "Kyber",
+        "category": "Cryptography",
+        "evidence_level": "strong",
+        "evidence_text": "AI, machine learning, and security: Kyber ... KyberVPN / Secure Chat Project - ... Implemented post-quantum key-exchange concepts with Kyber"
+      },
+      {
+        "name": "AES-GCM",
+        "category": "Cryptography",
+        "evidence_level": "strong",
+        "evidence_text": "AI, machine learning, and security: ... AES-GCM, encrypted messaging ... KyberVPN / Secure Chat Project - room-key handling with AES-GCM"
+      },
+      {
+        "name": "Git / GitHub Actions",
+        "category": "Collaboration / CI",
+        "evidence_level": "strong",
+        "evidence_text": "Cloud, DevOps, and collaboration: ... Git, GitHub Actions, unit/E2E testing, remote collaboration, written communication, troubleshooting, and technical handoff documentation."
+      },
+      {
+        "name": "Nginx",
+        "category": "Infrastructure",
+        "evidence_level": "strong",
+        "evidence_text": "AI-enabled data and microservices platform - Refactored a monolithic API into a 7-container Docker platform ... Nginx routing, health checks"
+      }
+    ],
+    "projects": [
+      {
+        "name": "Smoking & Drinking Prediction Platform",
+        "description": "Independent data, analytics, and ML project that validated a large-scale data pipeline, trained classification models for smoking and drinking prediction, and published stakeholder-facing delivery artifacts.",
+        "technologies": [
+          "Python",
+          "scikit-learn",
+          "SQL",
+          "BigQuery",
+          "Dataform",
+          "Cloud Workflows",
+          "Looker Studio",
+          "Astro"
+        ],
+        "impact": "Processed 991,346 health-screening records, retained 991,320 valid rows (invalid rate below 0.003%); models reached 70.3% smoking prediction accuracy and 73.3% drinking prediction accuracy; published analytical tables and Looker Studio dashboards.",
+        "evidence_text": "Smoking & Drinking Prediction Platform - Independent data, analytics, and ML project - Python, scikit-learn, SQL, BigQuery, Dataform, Cloud Workflows, Looker Studio, Astro. Validated large-scale data pipeline: Processed 991,346 health-screening records, retained 991,320 valid rows, and reduced invalid records to only 26, for an invalid rate below 0.003%. Modeling and automation: Built reproducible workflows with Python, SQL, BigQuery, Dataform, and Cloud Workflows; trained classification models that reached 70.3% smoking prediction accuracy and 73.3% drinking prediction accuracy. Stakeholder-facing delivery: Published analytical tables, Looker Studio dashboards, and an Astro website explaining the methodology, findings, and prediction demo for non-technical audiences."
+      },
+      {
+        "name": "AI-Enabled Data Management Platform",
+        "description": "AI-enabled data and microservices platform refactored from a monolith into containerized services with traceable AI Q&A over structured records and semantic-search preparation.",
+        "technologies": [
+          "React",
+          "Node.js",
+          "PostgreSQL",
+          "Docker",
+          "Nginx",
+          "Gemini API",
+          "pgvector"
+        ],
+        "impact": "Refactored into a 7-container Docker platform with roughly 10 service endpoints; implemented CRUD, audit, operation logs, and integrated Gemini for natural-language Q&A grounded in database retrieval.",
+        "evidence_text": "AI-enabled data and microservices platform - React, Node.js, PostgreSQL, Docker, Nginx, Gemini API, pgvector. Service architecture: Refactored a monolithic API into a 7-container Docker platform with a React frontend, 5 Node.js services, PostgreSQL, Nginx routing, health checks, and roughly 10 service endpoints. CRUD, audit, and traceability: Implemented people-management workflows, filtered reads, operation logs, SQL retrieval, and API contracts designed for integration and maintainability. AI grounded in structured data: Integrated Gemini for natural-language Q&A over structured records and prepared semantic-search support with pgvector while keeping answers traceable and grounded in database retrieval."
+      },
+      {
+        "name": "ClimateWatch Colombia Project",
+        "description": "Serverless environmental data automation pipeline to ingest external weather and air-quality APIs for Colombian cities with layered storage for traceability.",
+        "technologies": [
+          "Python",
+          "AWS Lambda",
+          "S3",
+          "EventBridge",
+          "boto3",
+          "YAML",
+          "Open-Meteo APIs"
+        ],
+        "impact": "Built scheduled ingestion collectors and structured S3 storage into raw, curated, and audit layers to support traceability, replay, and failure inspection; designed the pipeline to scale by configuration.",
+        "evidence_text": "ClimateWatch Colombia Project - Serverless environmental data automation - Python, AWS Lambda, S3, EventBridge, boto3, YAML, Open-Meteo APIs. Scheduled ingestion: Built serverless collectors triggered by EventBridge and AWS Lambda to consume external weather and air-quality APIs for Colombian cities. Layered storage design: Structured S3 storage into raw, curated, and audit layers with timestamped outputs to support traceability, replay, failure inspection, and future extension. Platform thinking: Designed the pipeline to scale by configuration so new cities, variables, or endpoints could be added without reworking the architecture."
+      },
+      {
+        "name": "KyberVPN / Secure Chat Project",
+        "description": "Experimental secure communications backend and frontend implementing post-quantum key-exchange concepts and encrypted messaging with backend and client-side support.",
+        "technologies": [
+          "Python",
+          "FastAPI",
+          "React",
+          "REST APIs",
+          "Kyber",
+          "AES-GCM",
+          "uvicorn"
+        ],
+        "impact": "Developed a backend with 25 API routes across 2 routers for key management, encrypted chat, health/status, and connection flows; implemented post-quantum key exchange and room-key AES-GCM handling.",
+        "evidence_text": "KyberVPN / Secure Chat Project - Experimental secure communications backend and frontend - Python, FastAPI, React, REST APIs, Kyber, AES-GCM, CORS, uvicorn. Python/FastAPI backend: Developed a backend with 25 API routes across 2 routers plus root endpoints for key management, encrypted chat, health/status monitoring, connection listing, and disconnect flows. Applied cryptography: Implemented post-quantum key-exchange concepts with Kyber, room-key handling with AES-GCM, minimum encrypted-message validation, and structured connection cleanup. Client-side support: Also worked on the React client layer, including connection flows, encryption/decryption utilities, backend interoperability, and secure chat workflows."
+      },
+      {
+        "name": "InCollege Academic project",
+        "description": "Console-based professional networking application built in COBOL with file persistence and automated testing to cover end-to-end functional workflows.",
+        "technologies": [
+          "COBOL",
+          "file persistence"
+        ],
+        "impact": "Implemented menu-driven workflows for account creation, login, profiles, search, connections, job posting/browsing, messaging and added automated scenario-based regression testing.",
+        "evidence_text": "InCollege Academic project - Console-based professional networking application - COBOL, file persistence, automated testing. End-to-end functional workflow: Worked on a menu-driven COBOL application supporting account creation, login, profiles, full-name user search, connection requests, established network views, job posting, job browsing, and basic messaging. Persistence and regression testing: The system uses '.DAT' files for persistence and includes automated scenario-based testing, fixture seeding by epic, and output verification for functional regression coverage."
+      }
+    ],
+    "experiences": [
+      {
+        "company": "Rtramite - Repository",
+        "title": "Software Engineer - SGM Vehicle Workflow Platform",
+        "location": "Barranquilla, Colombia",
+        "start_date": "Jan. 2025",
+        "end_date": "Jan. 2026",
+        "bullets": [
+          "Production full-stack platform: Built and maintained an internal operations platform for vehicle-registration and transit-service workflows using React, Electron, TypeScript, NestJS, PostgreSQL, and Prisma, centralizing cases, payments, documents, shipments, statuses, services, and reporting.",
+          "Functional scale and architecture: Worked across 13 backend modules, 16 Prisma models, 97 route/controller decorators, and 26+ TypeScript/React views connected to JWT-secured REST APIs and desktop IPC authentication flows.",
+          "Operational impact: Turned manual workflows into auditable automation through PDF account statements, formula-safe CSV exports, reusable SQL reports, overdue/SLA detection, status history, and controlled file downloads.",
+          "Reliability and maintenance: Added bcrypt authentication, throttling, global validation, Swagger/OpenAPI documentation, multipart upload docs, and test coverage to improve supportability, onboarding, and long-term maintainability."
+        ],
+        "evidence_text": "Rtramite - RepositoryBarranquilla, Colombia\nSoftware Engineer - SGM Vehicle Workflow Platform Jan. 2025 - Jan. 2026\n◦Production full-stack platform: Built and maintained an internal operations platform for vehicle-registration and transit-service workflows using React, Electron, TypeScript, NestJS, PostgreSQL, and Prisma, centralizing cases, payments, documents, shipments, statuses, services, and reporting.\n◦Functional scale and architecture: Worked across 13 backend modules, 16 Prisma models, 97 route/controller decorators, and 26+ TypeScript/React views connected to JWT-secured REST APIs and desktop IPC authentication flows.\n◦Operational impact: Turned manual workflows into auditable automation through PDF account statements, formula-safe CSV exports, reusable SQL reports, overdue/SLA detection, status history, and controlled file downloads.\n◦Reliability and maintenance: Added bcrypt authentication, throttling, global validation, Swagger/OpenAPI documentation, multipart upload docs, and test coverage to improve supportability, onboarding, and long-term maintainability."
+      }
+    ],
+    "education": [
+      {
+        "institution": "University of South Florida",
+        "degree": "Bachelor of Science in Computer Science - GPA: 3.52/4.0",
+        "location": "Tampa, Florida",
+        "dates": "Aug. 2025 - May 2026",
+        "evidence_text": "University of South FloridaTampa, Florida\nBachelor of Science in Computer Science - GPA: 3.52/4.0 Aug. 2025 - May 2026"
+      },
+      {
+        "institution": "Universidad del Norte",
+        "degree": "Studies in Systems Engineering - GPA: 4.33/5.0",
+        "location": "Barranquilla, Colombia",
+        "dates": "Aug. 2021 - 2026",
+        "evidence_text": "Universidad del NorteBarranquilla, Colombia\nStudies in Systems Engineering - GPA: 4.33/5.0 Aug. 2021 - 2026"
+      }
+    ],
+    "certifications": [
+      {
+        "name": "CS50 Python",
+        "issuer": null,
+        "evidence_text": "Certifications and languages: CS50 Python"
+      },
+      {
+        "name": "CS50 Cybersecurity",
+        "issuer": null,
+        "evidence_text": "Certifications and languages: CS50 Cybersecurity"
+      },
+      {
+        "name": "Basic Artificial Intelligence Bootcamp",
+        "issuer": null,
+        "evidence_text": "Certifications and languages: Basic Artificial Intelligence Bootcamp"
+      },
+      {
+        "name": "Duolingo English C1 Certificate",
+        "issuer": "Duolingo",
+        "evidence_text": "Certifications and languages: Duolingo English C1 Certificate"
+      },
+      {
+        "name": "Spanish (native)",
+        "issuer": null,
+        "evidence_text": "Certifications and languages: ... Spanish native."
+      }
+    ]
+  }
+}

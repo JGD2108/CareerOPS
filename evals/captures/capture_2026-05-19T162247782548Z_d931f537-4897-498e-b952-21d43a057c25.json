@@ -1,0 +1,23 @@
+{
+  "id": "d931f537-4897-498e-b952-21d43a057c25",
+  "timestamp": "2026-05-19T16:22:47.782548Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24341,
+  "output_len": 393,
+  "estimated_input_tokens": 6210,
+  "estimated_output_tokens": 98,
+  "estimated_total_tokens": 6308,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Sezzle",
+    "role_hint": "Junior Software Engineer",
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action needed; mark as read or unsubscribe if not interested.",
+    "reasoning": "Marketing job alert email; not tied to the candidate's current applications or recruiter communications."
+  }
+}

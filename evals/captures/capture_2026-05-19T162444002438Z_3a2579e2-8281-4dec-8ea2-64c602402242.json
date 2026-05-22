@@ -1,0 +1,23 @@
+{
+  "id": "3a2579e2-8281-4dec-8ea2-64c602402242",
+  "timestamp": "2026-05-19T16:24:44.002438Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 16571,
+  "output_len": 433,
+  "estimated_input_tokens": 4267,
+  "estimated_output_tokens": 108,
+  "estimated_total_tokens": 4376,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Data Engineer Academy",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "Mark as not relevant_to_careerops; marketing email from Data Engineer Academy.",
+    "reasoning": "Marketing email advertising data engineering training; no job application, interview, or recruiter context; therefore not relevant to candidate's job search."
+  }
+}

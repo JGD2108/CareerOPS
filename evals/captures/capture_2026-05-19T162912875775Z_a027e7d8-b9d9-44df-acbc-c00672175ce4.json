@@ -1,0 +1,23 @@
+{
+  "id": "a027e7d8-b9d9-44df-acbc-c00672175ce4",
+  "timestamp": "2026-05-19T16:29:12.875775Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 2001,
+  "output_len": 381,
+  "estimated_input_tokens": 625,
+  "estimated_output_tokens": 95,
+  "estimated_total_tokens": 720,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "application_confirmation",
+    "company_name": "Gallagher",
+    "role_hint": "AI Engineer",
+    "status_hint": "Applied",
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action; monitor for potential recruiter outreach.",
+    "reasoning": "Automated acknowledgement of a submitted AI Engineer application; indicates the application is under review."
+  }
+}

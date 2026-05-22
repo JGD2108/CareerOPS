@@ -1,4 +1,13 @@
-from app.gmail_integration import _classify_email
+from types import SimpleNamespace
+
+from app.gmail_integration import (
+    _category_allows_application_link,
+    _classify_email,
+    _default_reply_body,
+    _infer_email_language,
+    _is_job_inbox_email,
+    _is_target_role,
+)
 from app.models import EmailCategory
 
 
@@ -52,3 +61,113 @@ def test_rejection_email_updates_tracker_guidance():
     assert urgency == "normal"
     assert requires_reply is False
     assert "rejected" in suggested_action.lower()
+
+
+def test_spanish_linkedin_profile_mismatch_is_rejection():
+    category, urgency, requires_reply, suggested_action = _classify_email(
+        subject="Your application to Ingeniero de datos at Enersinc",
+        body_text=(
+            "Your update from Enersinc\n"
+            "Gracias por tu interés en el puesto de Ingeniero de datos en Enersinc. "
+            "Lamentablemente, no cumples con el perfil que exige el cargo.\n"
+            "Saludos cordiales,\n"
+            "Enersinc"
+        ),
+        from_email="jobs-noreply@linkedin.com",
+    )
+
+    assert category == EmailCategory.REJECTION
+    assert urgency == "normal"
+    assert requires_reply is False
+    assert "rejected" in suggested_action.lower()
+
+
+def test_generic_application_confirmation_is_not_downgraded_to_other():
+    category, urgency, requires_reply, suggested_action = _classify_email(
+        subject="Thank you for applying to Acme",
+        body_text="We received your application for the Junior AI Engineer role. Your resume has been received.",
+        from_email="no-reply@greenhouse.io",
+    )
+
+    assert category == EmailCategory.APPLICATION_CONFIRMATION
+    assert urgency == "normal"
+    assert requires_reply is False
+    assert "application confirmation" in suggested_action.lower()
+
+
+def test_job_inbox_filter_excludes_linkedin_alerts_and_other_noise():
+    visible_email = SimpleNamespace(category=EmailCategory.INTERVIEW_INVITATION, application_id=None)
+    hidden_job_alert = SimpleNamespace(category=EmailCategory.JOB_ALERT, application_id=None)
+    hidden_other = SimpleNamespace(category=EmailCategory.OTHER, application_id=None)
+    linked_other = SimpleNamespace(category=EmailCategory.OTHER, application_id="123")
+
+    assert _is_job_inbox_email(visible_email) is True
+    assert _is_job_inbox_email(hidden_job_alert) is False
+    assert _is_job_inbox_email(hidden_other) is False
+    assert _is_job_inbox_email(linked_other) is True
+
+
+def test_only_actionable_email_categories_allow_auto_linking():
+    assert _category_allows_application_link(EmailCategory.INTERVIEW_INVITATION) is True
+    assert _category_allows_application_link(EmailCategory.APPLICATION_CONFIRMATION) is True
+    assert _category_allows_application_link(EmailCategory.JOB_ALERT) is False
+    assert _category_allows_application_link(EmailCategory.OTHER) is False
+
+
+def test_community_newsletter_is_not_misclassified_as_interview() -> None:
+    category, urgency, requires_reply, suggested_action = _classify_email(
+        subject="just showing up is the first win",
+        body_text="resume reviews tomorrow, laid off lounge wednesday, community update for builders",
+        from_email="community@torc.dev",
+    )
+
+    assert category == EmailCategory.OTHER
+    assert urgency == "normal"
+    assert requires_reply is False
+    assert "Ignore" in suggested_action
+
+
+def test_ai_engineer_title_counts_as_target_role() -> None:
+    assert _is_target_role("Junior AI Engineer") is True
+
+
+def test_linkedin_social_acceptance_is_not_recruiter_follow_up() -> None:
+    category, urgency, requires_reply, suggested_action = _classify_email(
+        subject="Boris accepted your invitation, explore their network",
+        body_text="See more people from their company and keep building your network on LinkedIn.",
+        from_email="messages-noreply@linkedin.com",
+    )
+
+    assert category == EmailCategory.OTHER
+    assert urgency == "normal"
+    assert requires_reply is False
+    assert "Ignore" in suggested_action
+
+
+def test_greenhouse_growth_email_is_not_recruiter_follow_up() -> None:
+    category, urgency, requires_reply, suggested_action = _classify_email(
+        subject="Show recruiters you're really interested with Dream Job",
+        body_text="Get noticed by every hiring team and boost your profile visibility with Dream Job.",
+        from_email="notifications@us.greenhouse-jobs.com",
+    )
+
+    assert category == EmailCategory.OTHER
+    assert urgency == "normal"
+    assert requires_reply is False
+    assert "Ignore" in suggested_action
+
+
+def test_recruiter_follow_up_reply_uses_email_language() -> None:
+    email = SimpleNamespace(
+        category=EmailCategory.RECRUITER_FOLLOW_UP,
+        company_name="Acme",
+        subject="Hola, seguimiento de tu postulación",
+        snippet="Hola, quería dar seguimiento a tu mensaje.",
+        body_text="Hola, quería dar seguimiento a tu mensaje y confirmar los siguientes pasos.",
+    )
+
+    assert _infer_email_language(email) == "spanish"
+    body = _default_reply_body(email)
+
+    assert body.startswith("Hola,")
+    assert "seguimiento" in body.lower()

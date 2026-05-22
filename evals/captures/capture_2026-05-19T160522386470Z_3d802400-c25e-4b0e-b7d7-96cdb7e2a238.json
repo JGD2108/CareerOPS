@@ -1,0 +1,69 @@
+{
+  "id": "3d802400-c25e-4b0e-b7d7-96cdb7e2a238",
+  "timestamp": "2026-05-19T16:05:22.386470Z",
+  "schema_name": "careerops_profile_extraction",
+  "model": "gpt-5-mini",
+  "system_prompt_len": 528,
+  "user_prompt_len": 362,
+  "output_len": 1678,
+  "estimated_input_tokens": 222,
+  "estimated_output_tokens": 419,
+  "estimated_total_tokens": 642,
+  "parsed": {
+    "display_name": "Diego Morales",
+    "headline": "Data analyst who moved into analytics engineering",
+    "location": null,
+    "summary": "Diego Morales is a data analyst who moved into analytics engineering. He is comfortable with SQL, dbt, Airflow, and dashboards.",
+    "communication_style": [],
+    "work_preferences": [],
+    "skills": [
+      {
+        "name": "SQL",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "He is comfortable with SQL, dbt, Airflow, and dashboards."
+      },
+      {
+        "name": "dbt",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "He is comfortable with SQL, dbt, Airflow, and dashboards."
+      },
+      {
+        "name": "Airflow",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "He is comfortable with SQL, dbt, Airflow, and dashboards."
+      },
+      {
+        "name": "dashboards",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "He is comfortable with SQL, dbt, Airflow, and dashboards."
+      }
+    ],
+    "projects": [],
+    "experiences": [
+      {
+        "company": "null",
+        "title": "Data Analyst",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "bullets": [],
+        "evidence_text": "Diego Morales is a data analyst who moved into analytics engineering."
+      },
+      {
+        "company": "null",
+        "title": "Analytics Engineering (transition)",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "bullets": [],
+        "evidence_text": "Diego Morales is a data analyst who moved into analytics engineering."
+      }
+    ],
+    "education": [],
+    "certifications": []
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "eee2ab9f-f665-4082-8fbd-424dd40730f7",
+  "timestamp": "2026-05-19T16:40:10.413339Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24320,
+  "output_len": 446,
+  "estimated_input_tokens": 6205,
+  "estimated_output_tokens": 111,
+  "estimated_total_tokens": 6316,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action required; this is a marketing job-alert digest from LinkedIn.",
+    "reasoning": "Email is a LinkedIn job alert digest listing multiple job postings; not a direct application, recruiter follow-up, interview, assessment, rejection, offer, documents requested, or form pending."
+  }
+}

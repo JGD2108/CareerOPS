@@ -14,6 +14,8 @@ from app.ai_client import ai_agents_enabled, generate_structured_output
 from app.ai_schemas import AICVTailoringPlan
 from app.audit import write_audit_log
 from app.config import get_settings
+from app.job_description_state import description_is_complete, incomplete_description_reason
+from app.documents import is_evaluation_artifact_document
 from app.models import (
     CVVersion,
     CVVersionStatus,
@@ -27,11 +29,17 @@ from app.models import (
 
 
 def _latest_cv_document(db: Session) -> Document | None:
-    return db.scalar(
-        select(Document)
-        .where(Document.source_type == SourceType.CV, Document.extracted_text.is_not(None))
-        .order_by(Document.created_at.desc())
+    documents = list(
+        db.scalars(
+            select(Document)
+            .where(Document.source_type == SourceType.CV, Document.extracted_text.is_not(None))
+            .order_by(Document.created_at.desc())
+        )
     )
+    for document in documents:
+        if not is_evaluation_artifact_document(document):
+            return document
+    return None
 
 
 def _latest_cv_template_document(db: Session) -> Document | None:
@@ -43,10 +51,13 @@ def _latest_cv_template_document(db: Session) -> Document | None:
         )
     )
     for document in documents:
+        if is_evaluation_artifact_document(document):
+            continue
         filename = (document.original_filename or "").lower()
         if filename.endswith(".tex"):
             return document
-    return documents[0] if documents else None
+    trusted_documents = [document for document in documents if not is_evaluation_artifact_document(document)]
+    return trusted_documents[0] if trusted_documents else None
 
 
 def _latest_job_score(db: Session, job_id: UUID) -> JobScore | None:
@@ -649,6 +660,10 @@ def create_tailoring_plan(db: Session, job_id: UUID) -> CVVersion | None:
     score = _latest_job_score(db, job_id)
     if not job or not score:
         return None
+    if not description_is_complete(job):
+        raise ValueError(incomplete_description_reason(job))
+    if score.extracted_requirements.get("preliminary"):
+        raise ValueError("Cannot create a final CV tailoring plan from a preliminary job score.")
 
     profile = _load_profile(db, score.candidate_profile_id)
     if not profile:

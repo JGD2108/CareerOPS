@@ -1,0 +1,23 @@
+{
+  "id": "3195c8bd-8297-41ec-86e0-54b111cb59ae",
+  "timestamp": "2026-05-19T16:32:45.104072Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24323,
+  "output_len": 305,
+  "estimated_input_tokens": 6205,
+  "estimated_output_tokens": 76,
+  "estimated_total_tokens": 6282,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Masorti Olami",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "None",
+    "reasoning": "This is a newsletter/updates email about Masorti Olami activities; not related to the candidate's job search."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "c55c8403-7bfa-4779-b2c7-78553d406dff",
+  "timestamp": "2026-05-19T16:20:14.351124Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24334,
+  "output_len": 335,
+  "estimated_input_tokens": 6208,
+  "estimated_output_tokens": 83,
+  "estimated_total_tokens": 6292,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No action needed; marketing job alert digest.",
+    "reasoning": "LinkedIn job alert digest; not tied to a specific job application or recruiter communication."
+  }
+}

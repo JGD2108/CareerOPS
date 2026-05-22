@@ -17,5 +17,27 @@ services:
       timeout: 5s
       retries: 10
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: careerops_backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://careerops:careerops_dev_password@db:5432/careerops
+      LOCAL_STORAGE_DIR: /storage
+      GMAIL_CREDENTIALS_FILE: /storage/secrets/gmail_credentials.json
+      GMAIL_TOKEN_FILE: /storage/secrets/gmail_token.json
+      GMAIL_OAUTH_REDIRECT_URI: http://127.0.0.1:8000/api/v1/gmail/oauth/callback
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage:/storage
+
 volumes:
   careerops_pgdata:

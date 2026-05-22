@@ -1,0 +1,23 @@
+{
+  "id": "2541359c-1994-4322-b54b-c147c08e8044",
+  "timestamp": "2026-05-19T16:29:57.465377Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24345,
+  "output_len": 460,
+  "estimated_input_tokens": 6211,
+  "estimated_output_tokens": 115,
+  "estimated_total_tokens": 6326,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "job_alert",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "New jobs match your preferences",
+    "requires_reply": false,
+    "suggested_action": "View job postings on LinkedIn and consider applying if interested.",
+    "reasoning": "This is a LinkedIn Job Alerts digest with multiple job postings. It is not a direct application, recruiter contact, or interview, but it is relevant for ongoing job search activity."
+  }
+}

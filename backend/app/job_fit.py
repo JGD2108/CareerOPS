@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.audit import write_audit_log
+from app.job_description_state import description_is_complete, description_text_for_analysis, incomplete_description_reason
 from app.models import (
     CandidateProfile,
     Job,
@@ -26,54 +27,82 @@ ROLE_KEYWORDS = {
 KNOWN_REQUIREMENTS = [
     "python",
     "fastapi",
+    "django",
+    "flask",
     "node.js",
     "node",
     "nestjs",
+    "express",
     "typescript",
     "javascript",
     "react",
+    "angular",
+    "vue",
+    "next.js",
     "postgresql",
     "sql",
     "mysql",
+    "mongodb",
+    "nosql",
     "prisma",
+    "sqlalchemy",
     "docker",
+    "kubernetes",
     "nginx",
     "aws",
+    "azure",
+    "gcp",
     "lambda",
     "s3",
+    "ec2",
     "eventbridge",
     "boto3",
-    "gcp",
+    "google cloud",
     "bigquery",
     "git",
     "github actions",
+    "gitlab",
+    "ci/cd",
     "rest",
     "rest api",
+    "graphql",
     "api development",
     "api integration",
     "jwt",
+    "oauth",
     "openapi",
     "swagger",
     "llm",
     "prompt engineering",
     "prompt design",
     "gemini",
+    "openai",
+    "gpt",
     "llm api",
     "pgvector",
     "vector search",
     "semantic search",
+    "elasticsearch",
     "serverless",
     "data pipelines",
     "data ingestion",
     "etl",
+    "apache spark",
+    "apache kafka",
     "workflow automation",
     "automation",
     "redis",
-    "kubernetes",
+    "rabbitmq",
     "langgraph",
     "langchain",
     "crew ai",
     "crewai",
+    "jest",
+    "pytest",
+    "playwright",
+    "selenium",
+    "tailwind css",
+    "material-ui",
 ]
 
 
@@ -90,7 +119,7 @@ def _contains_term(text: str, term: str) -> bool:
 
 
 def parse_job_description(job: Job) -> dict:
-    description = job.description or ""
+    description = description_text_for_analysis(job)
     combined = " ".join(value for value in [job.title, job.seniority, job.location, job.work_mode, description] if value)
     required_skills = sorted({skill for skill in KNOWN_REQUIREMENTS if _contains_term(combined, skill)})
 
@@ -175,13 +204,18 @@ def ensure_job_score(db: Session, job_id: UUID) -> JobScore | None:
     return score_job_fit(db, job_id)
 
 
-def score_job_fit(db: Session, job_id: UUID) -> JobScore | None:
+def score_job_fit(db: Session, job_id: UUID, *, preliminary: bool = False) -> JobScore | None:
     job = db.get(Job, job_id)
     profile = get_profile(db)
     if not job or not profile:
         return None
+    if not preliminary and not description_is_complete(job):
+        raise ValueError(incomplete_description_reason(job))
 
     extracted = parse_job_description(job)
+    extracted["description_status"] = job.description_status
+    extracted["description_quality"] = job.description_quality
+    extracted["preliminary"] = preliminary
     required_skills = extracted["required_skills"]
     matched, missing = _match_skills(required_skills, profile)
 
@@ -237,6 +271,8 @@ def score_job_fit(db: Session, job_id: UUID) -> JobScore | None:
         reasons.append(f"Semantic profile retrieval found {len(semantic_matches)} supporting evidence records.")
     if not required_skills:
         risks.append("The parser found no known technical requirements; manual review is needed.")
+    if preliminary:
+        risks.append("Preliminary score only: the job description has not been fully resolved.")
     if missing:
         risks.append(f"{len(missing)} extracted requirements do not have direct profile evidence yet.")
 

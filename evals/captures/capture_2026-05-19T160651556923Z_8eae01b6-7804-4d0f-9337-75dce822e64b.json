@@ -1,0 +1,23 @@
+{
+  "id": "8eae01b6-7804-4d0f-9337-75dce822e64b",
+  "timestamp": "2026-05-19T16:06:51.556923Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 225,
+  "output_len": 387,
+  "estimated_input_tokens": 181,
+  "estimated_output_tokens": 96,
+  "estimated_total_tokens": 278,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "rejection",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": "Rejected",
+    "urgency": "normal",
+    "requires_reply": false,
+    "suggested_action": "No action required; continue applying to other opportunities.",
+    "reasoning": "The email states that the applicant will not be moving forward with the application, which indicates a rejection of the application."
+  }
+}

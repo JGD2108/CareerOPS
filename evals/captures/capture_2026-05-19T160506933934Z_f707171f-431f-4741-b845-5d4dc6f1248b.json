@@ -1,0 +1,71 @@
+{
+  "id": "f707171f-431f-4741-b845-5d4dc6f1248b",
+  "timestamp": "2026-05-19T16:05:06.933934Z",
+  "schema_name": "careerops_profile_extraction",
+  "model": "gpt-5-mini",
+  "system_prompt_len": 528,
+  "user_prompt_len": 424,
+  "output_len": 1872,
+  "estimated_input_tokens": 238,
+  "estimated_output_tokens": 468,
+  "estimated_total_tokens": 706,
+  "parsed": {
+    "display_name": "Ana Torres",
+    "headline": "Backend Engineer",
+    "location": "Miami",
+    "summary": "Backend engineer in Miami experienced with Python, FastAPI, PostgreSQL, and Docker; led an internal job routing service and presented a migration plan to leadership.",
+    "communication_style": [],
+    "work_preferences": [],
+    "skills": [
+      {
+        "name": "Python",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "She has worked with Python, FastAPI, PostgreSQL, and Docker."
+      },
+      {
+        "name": "FastAPI",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "She has worked with Python, FastAPI, PostgreSQL, and Docker."
+      },
+      {
+        "name": "PostgreSQL",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "She has worked with Python, FastAPI, PostgreSQL, and Docker."
+      },
+      {
+        "name": "Docker",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "She has worked with Python, FastAPI, PostgreSQL, and Docker."
+      }
+    ],
+    "projects": [
+      {
+        "name": "Internal job routing service",
+        "description": "Led an internal job routing service.",
+        "technologies": [],
+        "impact": null,
+        "evidence_text": "She led an internal job routing service and presented a migration plan to leadership."
+      }
+    ],
+    "experiences": [
+      {
+        "company": "null",
+        "title": "Backend Engineer",
+        "location": "Miami",
+        "start_date": null,
+        "end_date": null,
+        "bullets": [
+          "Led an internal job routing service.",
+          "Presented a migration plan to leadership."
+        ],
+        "evidence_text": "Ana Torres is a backend engineer in Miami. She led an internal job routing service and presented a migration plan to leadership."
+      }
+    ],
+    "education": [],
+    "certifications": []
+  }
+}

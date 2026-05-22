@@ -1,0 +1,23 @@
+{
+  "id": "99c1c911-77ab-4115-9ce0-f08ec2ef092f",
+  "timestamp": "2026-05-19T16:24:20.127903Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 5615,
+  "output_len": 396,
+  "estimated_input_tokens": 1528,
+  "estimated_output_tokens": 99,
+  "estimated_total_tokens": 1627,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action needed",
+    "reasoning": "Marketing/notification email from LinkedIn about weekly analytics; not related to job application, recruiter follow-up, interview, assessment, rejection, offer, documents requested, or form pending."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "a5fa2491-432c-48a3-be07-7767d8950952",
+  "timestamp": "2026-05-19T16:39:03.187810Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 7401,
+  "output_len": 436,
+  "estimated_input_tokens": 1975,
+  "estimated_output_tokens": 109,
+  "estimated_total_tokens": 2084,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Glassdoor",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "Unsubscribe from Glassdoor emails or mark as not relevant for job search",
+    "reasoning": "Marketing/newsletter-style email with job listings, not a direct application, recruiter follow-up, interview, assessment, rejection, offer, documents requested, or form pending."
+  }
+}

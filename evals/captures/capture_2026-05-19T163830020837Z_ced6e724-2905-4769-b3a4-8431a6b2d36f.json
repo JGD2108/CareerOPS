@@ -1,0 +1,23 @@
+{
+  "id": "ced6e724-2905-4769-b3a4-8431a6b2d36f",
+  "timestamp": "2026-05-19T16:38:30.020837Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 13739,
+  "output_len": 378,
+  "estimated_input_tokens": 3559,
+  "estimated_output_tokens": 94,
+  "estimated_total_tokens": 3654,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Data Engineer Academy",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "Ignore marketing email; no action related to job search.",
+    "reasoning": "Marketing email about training/services, not a job application, recruiter message, or interview/assessment communication."
+  }
+}

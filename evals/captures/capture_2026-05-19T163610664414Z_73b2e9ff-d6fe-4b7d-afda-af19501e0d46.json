@@ -1,0 +1,23 @@
+{
+  "id": "73b2e9ff-d6fe-4b7d-afda-af19501e0d46",
+  "timestamp": "2026-05-19T16:36:10.664414Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24344,
+  "output_len": 459,
+  "estimated_input_tokens": 6211,
+  "estimated_output_tokens": 114,
+  "estimated_total_tokens": 6325,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "job_alert",
+    "company_name": "WPP Media",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "Review the LinkedIn job listings and consider applying to any that match your preferences.",
+    "reasoning": "This is a LinkedIn Job Alerts digest featuring multiple Data/BI roles at WPP Media. It is relevant to the candidate's job search but not a direct application or recruiter message."
+  }
+}

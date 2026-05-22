@@ -1,0 +1,23 @@
+{
+  "id": "67f1f3e5-b311-4d65-b0d9-925a7594f735",
+  "timestamp": "2026-05-19T16:06:31.090922Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 251,
+  "output_len": 368,
+  "estimated_input_tokens": 187,
+  "estimated_output_tokens": 92,
+  "estimated_total_tokens": 279,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "interview_invitation",
+    "company_name": null,
+    "role_hint": "Platform Engineer",
+    "status_hint": "Interview",
+    "urgency": "soon",
+    "requires_reply": true,
+    "suggested_action": "Reply with available times for a technical interview next week.",
+    "reasoning": "Recruiter asks for availability for a technical interview for a Platform Engineer role."
+  }
+}

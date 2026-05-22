@@ -1,0 +1,23 @@
+{
+  "id": "81727a60-d1b1-4c98-9352-7855143cfe8f",
+  "timestamp": "2026-05-19T16:06:41.898030Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 217,
+  "output_len": 375,
+  "estimated_input_tokens": 179,
+  "estimated_output_tokens": 93,
+  "estimated_total_tokens": 273,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "coding_assessment",
+    "company_name": null,
+    "role_hint": "Data Engineer",
+    "status_hint": "Assessment",
+    "urgency": "72 hours",
+    "requires_reply": false,
+    "suggested_action": "Complete the coding assessment and submit before the deadline.",
+    "reasoning": "Email is a coding assessment request related to a Data Engineer role in the application process."
+  }
+}

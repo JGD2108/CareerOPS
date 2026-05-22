@@ -1,0 +1,23 @@
+{
+  "id": "6ebce7f3-c6c2-4ceb-92db-d9ea18f965b2",
+  "timestamp": "2026-05-19T16:21:09.094334Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24341,
+  "output_len": 457,
+  "estimated_input_tokens": 6210,
+  "estimated_output_tokens": 114,
+  "estimated_total_tokens": 6324,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "Unsubscribe or adjust your LinkedIn job alert preferences to reduce noise.",
+    "reasoning": "Marketing/job alert newsletter; lists multiple junior software engineer roles from various companies; does not pertain to a specific application, interview, or recruiter communication."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "43d29e88-5084-4d1b-b6aa-c6e3c35cc063",
+  "timestamp": "2026-05-19T16:28:36.423735Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24354,
+  "output_len": 371,
+  "estimated_input_tokens": 6213,
+  "estimated_output_tokens": 92,
+  "estimated_total_tokens": 6306,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action required; this is a general job alert digest.",
+    "reasoning": "Email is a marketing-style job alert digest, not a candidate-specific application, interview, or recruiter follow-up."
+  }
+}

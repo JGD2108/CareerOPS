@@ -1,0 +1,23 @@
+{
+  "id": "b2c7abb7-266e-4872-a61c-544e91fd3ef6",
+  "timestamp": "2026-05-19T16:06:07.136397Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 271,
+  "output_len": 397,
+  "estimated_input_tokens": 192,
+  "estimated_output_tokens": 99,
+  "estimated_total_tokens": 292,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "Ignore as marketing/job alert not tied to application",
+    "reasoning": "Email is a general LinkedIn job alert for backend engineer roles in Bogotá; no reference to an application, recruiter contact, or interview process."
+  }
+}

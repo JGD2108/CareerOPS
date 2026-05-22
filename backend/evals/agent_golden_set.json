@@ -1,0 +1,205 @@
+{
+  "version": 1,
+  "inbox_triage": [
+    {
+      "id": "job_alert_noise",
+      "subject": "New jobs for backend engineer in Bogotá",
+      "from_email": "jobalerts-noreply@linkedin.com",
+      "body_text": "LinkedIn Job Alerts\nNew backend engineer jobs in Bogotá\nView jobs on LinkedIn.",
+      "expected": {
+        "category": "job_alert",
+        "relevant_to_careerops": false,
+        "requires_reply": false,
+        "urgency": "normal"
+      }
+    },
+    {
+      "id": "application_confirmation",
+      "subject": "Your application was sent to Acme",
+      "from_email": "jobupdates@linkedin.com",
+      "body_text": "Your application was sent to Acme for Backend Engineer. You applied for this role through LinkedIn.",
+      "expected": {
+        "category": "application_confirmation",
+        "relevant_to_careerops": true,
+        "requires_reply": false,
+        "urgency": "normal"
+      }
+    },
+    {
+      "id": "interview_invitation",
+      "subject": "Interview availability for Platform Engineer",
+      "from_email": "recruiter@startup.com",
+      "body_text": "Could you share your availability for a technical interview next week?",
+      "expected": {
+        "category": "interview_invitation",
+        "relevant_to_careerops": true,
+        "requires_reply": true,
+        "urgency": "high"
+      }
+    },
+    {
+      "id": "coding_assessment",
+      "subject": "Your coding assessment for Data Engineer",
+      "from_email": "assessments@platform.io",
+      "body_text": "Please complete the coding assessment within 72 hours.",
+      "expected": {
+        "category": "coding_assessment",
+        "relevant_to_careerops": true,
+        "requires_reply": false,
+        "urgency": "high"
+      }
+    },
+    {
+      "id": "rejection",
+      "subject": "Update on your application",
+      "from_email": "careers@company.com",
+      "body_text": "Unfortunately, we will not be moving forward with your application.",
+      "expected": {
+        "category": "rejection",
+        "relevant_to_careerops": true,
+        "requires_reply": false,
+        "urgency": "normal"
+      }
+    },
+    {
+      "id": "newsletter_noise",
+      "subject": "Weekly product updates",
+      "from_email": "newsletter@vendor.com",
+      "body_text": "A recap of our latest feature releases and promotions.",
+      "expected": {
+        "category": "other",
+        "relevant_to_careerops": false,
+        "requires_reply": false,
+        "urgency": "normal"
+      }
+    }
+    ,
+    {
+      "id": "recruiter_followup_spanish",
+      "subject": "Seguimiento: entrevista técnica",
+      "from_email": "reclutamiento@empresa.com",
+      "body_text": "Hola, queríamos confirmar disponibilidad para una entrevista técnica la próxima semana.",
+      "expected": {
+        "category": "recruiter_follow_up",
+        "relevant_to_careerops": true,
+        "requires_reply": true,
+        "urgency": "normal"
+      }
+    },
+    {
+      "id": "linkedin_application_confirmation_variation",
+      "subject": "Your application was sent",
+      "from_email": "notifications@linkedin.com",
+      "body_text": "Your application was sent to Example Co for Senior Engineer via LinkedIn. Track your application.",
+      "expected": {
+        "category": "application_confirmation",
+        "relevant_to_careerops": true,
+        "requires_reply": false,
+        "urgency": "normal"
+      }
+    },
+    {
+      "id": "generic_promo_noise",
+      "subject": "Big sale this weekend",
+      "from_email": "marketing@shop.com",
+      "body_text": "Huge discounts on all categories. Unsubscribe here.",
+      "expected": {
+        "category": "other",
+        "relevant_to_careerops": false,
+        "requires_reply": false,
+        "urgency": "normal"
+      }
+    },
+    {
+      "id": "offer_letter_with_compensation",
+      "subject": "Offer: Senior Platform Engineer",
+      "from_email": "offers@company.io",
+      "body_text": "We are excited to extend an offer including base salary and benefits. See attached offer letter.",
+      "expected": {
+        "category": "offer",
+        "relevant_to_careerops": true,
+        "requires_reply": true,
+        "urgency": "high"
+      }
+    },
+    {
+      "id": "security_alert_not_relevant",
+      "subject": "New login from unknown device",
+      "from_email": "security@service.com",
+      "body_text": "We noticed a new login to your account. If this wasn't you, reset your password.",
+      "expected": {
+        "category": "other",
+        "relevant_to_careerops": false,
+        "requires_reply": false,
+        "urgency": "normal"
+      }
+    },
+    {
+      "id": "document_request",
+      "subject": "Please provide ID and transcripts",
+      "from_email": "hr@company.com",
+      "body_text": "Please share scanned copies of your ID and university transcripts.",
+      "expected": {
+        "category": "documents_requested",
+        "relevant_to_careerops": true,
+        "requires_reply": true,
+        "urgency": "high"
+      }
+    }
+  ],
+  "profile_extraction": [
+    {
+      "id": "profile_sample_1",
+      "document_text": "Ana Torres is a backend engineer in Miami. She has worked with Python, FastAPI, PostgreSQL, and Docker. She led an internal job routing service and presented a migration plan to leadership.",
+      "expected": {
+        "display_name": "Ana Torres",
+        "headline": "Backend engineer",
+        "location": "Miami",
+        "skills": ["Python", "FastAPI", "PostgreSQL", "Docker"],
+        "projects": ["internal job routing service"],
+        "communication_style": ["clear", "technical"],
+        "work_preferences": ["backend", "local-first"]
+      }
+    },
+    {
+      "id": "profile_sample_2",
+      "document_text": "Diego Morales is a data analyst who moved into analytics engineering. He is comfortable with SQL, dbt, Airflow, and dashboards.",
+      "expected": {
+        "display_name": "Diego Morales",
+        "headline": "Data analyst",
+        "location": null,
+        "skills": ["SQL", "dbt", "Airflow"],
+        "projects": ["dashboards"],
+        "communication_style": ["concise"],
+        "work_preferences": ["analytics", "data engineering"]
+      }
+    }
+    ,
+    {
+      "id": "profile_sample_3",
+      "document_text": "María López — DevOps engineer. Experienced with Kubernetes, Terraform, Docker, CI/CD pipelines and monitoring. Speaks Spanish and English.",
+      "expected": {
+        "display_name": "María López",
+        "headline": "DevOps engineer",
+        "location": null,
+        "skills": ["Kubernetes", "Terraform", "Docker", "CI/CD"],
+        "projects": ["CI/CD pipelines"],
+        "communication_style": ["bilingual", "concise"],
+        "work_preferences": ["devops", "infrastructure"]
+      }
+    },
+    {
+      "id": "profile_sample_4",
+      "document_text": "John Smith is a frontend engineer focusing on React, TypeScript, Vite, and accessibility. He led a migration to a modern component library.",
+      "expected": {
+        "display_name": "John Smith",
+        "headline": "Frontend engineer",
+        "location": null,
+        "skills": ["React", "TypeScript", "Vite", "a11y"],
+        "projects": ["migration to component library"],
+        "communication_style": ["clear", "user-focused"],
+        "work_preferences": ["frontend", "product" ]
+      }
+    }
+  ]
+}

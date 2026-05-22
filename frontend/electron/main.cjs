@@ -1,10 +1,19 @@
 const { app, BrowserWindow, shell } = require('electron')
 const path = require('node:path')
 
-const DEV_SERVER_URL = process.env.CAREEROPS_DESKTOP_URL || 'http://127.0.0.1:5173'
+const DEV_SERVER_URL = process.env.CAREEROPS_DESKTOP_URL || 'http://localhost:5173'
+let mainWindow = null
+
+function parseUrl(value) {
+  try {
+    return new URL(value)
+  } catch {
+    return null
+  }
+}
 
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1180,
@@ -20,30 +29,47 @@ function createWindow() {
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    const targetUrl = parseUrl(url)
+    const currentUrl = parseUrl(mainWindow?.webContents.getURL() || DEV_SERVER_URL)
+
+    // Ignore popup attempts that resolve to blank pages instead of opening empty windows.
+    if (!targetUrl || targetUrl.protocol === 'about:') {
+      return { action: 'deny' }
+    }
+
+    // Keep same-origin navigations inside the existing app shell.
+    if (currentUrl && targetUrl.origin === currentUrl.origin) {
+      return { action: 'deny' }
+    }
+
+    if (targetUrl.protocol === 'http:' || targetUrl.protocol === 'https:') {
+      shell.openExternal(targetUrl.toString())
+    }
     return { action: 'deny' }
   })
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    const currentUrl = mainWindow.webContents.getURL()
+    const currentUrl = parseUrl(mainWindow.webContents.getURL())
+    const nextUrl = parseUrl(url)
     const isSameAppNavigation =
       url.startsWith('file://') ||
-      url.startsWith(DEV_SERVER_URL) ||
-      currentUrl.startsWith(url)
+      (currentUrl && nextUrl && currentUrl.origin === nextUrl.origin)
 
-    if (!isSameAppNavigation && /^https?:\/\//.test(url)) {
+    if (!isSameAppNavigation && nextUrl && (nextUrl.protocol === 'http:' || nextUrl.protocol === 'https:')) {
       event.preventDefault()
-      shell.openExternal(url)
+      shell.openExternal(nextUrl.toString())
     }
+  })
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
   })
 
   if (app.isPackaged) {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   } else {
     mainWindow.loadURL(DEV_SERVER_URL)
-    if (process.env.CAREEROPS_OPEN_DEVTOOLS === 'true') {
-      mainWindow.webContents.openDevTools({ mode: 'detach' })
-    }
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
   }
 }
 

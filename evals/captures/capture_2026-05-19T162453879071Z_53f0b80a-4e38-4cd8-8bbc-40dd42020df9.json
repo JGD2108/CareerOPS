@@ -1,0 +1,23 @@
+{
+  "id": "53f0b80a-4e38-4cd8-8bbc-40dd42020df9",
+  "timestamp": "2026-05-19T16:24:53.879071Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24312,
+  "output_len": 342,
+  "estimated_input_tokens": 6203,
+  "estimated_output_tokens": 85,
+  "estimated_total_tokens": 6288,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action required",
+    "reasoning": "LinkedIn Job Alerts digest is a marketing/newsletter style notification, not a direct application or recruiter communication."
+  }
+}

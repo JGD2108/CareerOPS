@@ -1,0 +1,23 @@
+{
+  "id": "3ab6298c-5bb0-4e71-97b0-f051927809c2",
+  "timestamp": "2026-05-19T16:32:59.714603Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 5398,
+  "output_len": 299,
+  "estimated_input_tokens": 1474,
+  "estimated_output_tokens": 74,
+  "estimated_total_tokens": 1549,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "/",
+    "requires_reply": false,
+    "suggested_action": "No action required",
+    "reasoning": "Marketing job alert from Wellfound listing multiple jobs; not tied to candidate's application status."
+  }
+}

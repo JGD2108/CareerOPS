@@ -1,0 +1,23 @@
+{
+  "id": "9ffea50d-0f8f-40a5-a6e9-eac7163df0ce",
+  "timestamp": "2026-05-19T16:26:53.668591Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24344,
+  "output_len": 435,
+  "estimated_input_tokens": 6211,
+  "estimated_output_tokens": 108,
+  "estimated_total_tokens": 6319,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "job_alert",
+    "company_name": "WPP Media",
+    "role_hint": "Data Management and BI Manager",
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "Review the LinkedIn job postings and consider applying to any that match your interests.",
+    "reasoning": "LinkedIn job alert digest with multiple postings from WPP Media; no direct application or recruiter communication in the email."
+  }
+}

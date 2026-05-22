@@ -1,0 +1,23 @@
+{
+  "id": "cfb69719-4f5e-4f9f-868d-4f747538560e",
+  "timestamp": "2026-05-19T16:29:20.188415Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 7496,
+  "output_len": 315,
+  "estimated_input_tokens": 1999,
+  "estimated_output_tokens": 78,
+  "estimated_total_tokens": 2077,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No action needed",
+    "reasoning": "Account verification email from ICIMS; not related to job applications, recruiters, interviews, or other career actions."
+  }
+}

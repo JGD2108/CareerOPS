@@ -1,0 +1,23 @@
+{
+  "id": "0b737ba7-7177-454c-953b-3a915a428857",
+  "timestamp": "2026-05-19T16:25:25.734380Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24334,
+  "output_len": 415,
+  "estimated_input_tokens": 6208,
+  "estimated_output_tokens": 103,
+  "estimated_total_tokens": 6312,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "Unsubscribe from this LinkedIn job alert digest if you wish to stop receiving job newsletters.",
+    "reasoning": "This is a LinkedIn job alert newsletter listing multiple postings. It is not tied to any application, interview, or offer."
+  }
+}

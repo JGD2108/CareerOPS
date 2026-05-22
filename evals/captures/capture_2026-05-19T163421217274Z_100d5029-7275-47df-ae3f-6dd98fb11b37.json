@@ -1,0 +1,23 @@
+{
+  "id": "100d5029-7275-47df-ae3f-6dd98fb11b37",
+  "timestamp": "2026-05-19T16:34:21.217274Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 1831,
+  "output_len": 340,
+  "estimated_input_tokens": 582,
+  "estimated_output_tokens": 85,
+  "estimated_total_tokens": 667,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": " ",
+    "reasoning": "Marketing/educational content (IdeaProof Week 2 Checkpoint) not related to job applications, recruiters, interviews, assessments, or documents."
+  }
+}

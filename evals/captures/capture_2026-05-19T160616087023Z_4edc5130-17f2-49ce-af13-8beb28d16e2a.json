@@ -1,0 +1,23 @@
+{
+  "id": "4edc5130-17f2-49ce-af13-8beb28d16e2a",
+  "timestamp": "2026-05-19T16:06:16.087023Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 300,
+  "output_len": 369,
+  "estimated_input_tokens": 200,
+  "estimated_output_tokens": 92,
+  "estimated_total_tokens": 292,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "application_confirmation",
+    "company_name": "Acme",
+    "role_hint": "Backend Engineer",
+    "status_hint": "Applied",
+    "urgency": "Normal",
+    "requires_reply": false,
+    "suggested_action": "No action needed.",
+    "reasoning": "Email confirms that the candidate's application for Backend Engineer to Acme was submitted via LinkedIn; relevant to job search."
+  }
+}

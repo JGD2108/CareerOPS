@@ -1,0 +1,23 @@
+{
+  "id": "8425991a-ed51-4691-a6ee-28cba88031a6",
+  "timestamp": "2026-05-19T16:33:11.579487Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24341,
+  "output_len": 449,
+  "estimated_input_tokens": 6210,
+  "estimated_output_tokens": 112,
+  "estimated_total_tokens": 6322,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "informational",
+    "requires_reply": false,
+    "suggested_action": "Unsubscribe from LinkedIn job alert digest",
+    "reasoning": "This email is a LinkedIn job alert digest (marketing/newsletter) and not a direct job application, recruiter follow-up, interview, assessment, rejection, offer, documents requested, or form pending."
+  }
+}

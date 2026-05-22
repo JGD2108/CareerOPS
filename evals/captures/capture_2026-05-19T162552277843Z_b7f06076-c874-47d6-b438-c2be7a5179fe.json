@@ -1,0 +1,23 @@
+{
+  "id": "b7f06076-c874-47d6-b438-c2be7a5179fe",
+  "timestamp": "2026-05-19T16:25:52.277843Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24337,
+  "output_len": 467,
+  "estimated_input_tokens": 6209,
+  "estimated_output_tokens": 116,
+  "estimated_total_tokens": 6326,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "Low",
+    "requires_reply": false,
+    "suggested_action": "No action needed; this is a LinkedIn 'Viewed Jobs' notification.",
+    "reasoning": "Email is a marketing/notification from LinkedIn about viewed/similar jobs, not a direct job application, recruiter follow-up, interview, assessment, rejection, offer, documents requested, or form pending."
+  }
+}

@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.audit import write_audit_log
+from app.job_description_state import description_is_complete, incomplete_description_reason
 from app.models import (
     CVVersion,
     CVVersionStatus,
@@ -131,6 +132,10 @@ def generate_message_drafts(
     approved_cv = _approved_cv(db, job_id)
     if not job or not profile or not score:
         return None
+    if not description_is_complete(job):
+        raise ValueError(incomplete_description_reason(job))
+    if score.extracted_requirements.get("preliminary"):
+        raise ValueError("Cannot generate final message drafts from a preliminary job score.")
     if not approved_cv:
         raise ValueError("An approved CV version is required before generating message drafts.")
     if language.lower() != "english":

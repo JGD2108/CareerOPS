@@ -1,0 +1,23 @@
+{
+  "id": "f759e23f-cf63-49b9-a61e-711ade32ae8a",
+  "timestamp": "2026-05-19T16:40:00.603750Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 4646,
+  "output_len": 435,
+  "estimated_input_tokens": 1286,
+  "estimated_output_tokens": 108,
+  "estimated_total_tokens": 1395,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "application_confirmation",
+    "company_name": "Adaptive Teams",
+    "role_hint": "Junior / Mid Backend Engineer (AI Focus)",
+    "status_hint": "Reviewed",
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "Await next steps (screening questions or assessment link); no immediate action required.",
+    "reasoning": "Email confirms receipt of application and ongoing review; includes guidance for next steps."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "9f25ebc1-97f8-4cab-8ef8-b4f6da6250b6",
+  "timestamp": "2026-05-19T16:25:12.391529Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 13002,
+  "output_len": 367,
+  "estimated_input_tokens": 3375,
+  "estimated_output_tokens": 91,
+  "estimated_total_tokens": 3467,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "informational",
+    "requires_reply": false,
+    "suggested_action": "Ignore / archive",
+    "reasoning": "Marketing newsletter from LinkedIn (Jobgether via LinkedIn) about senior job search strategy; not related to the candidate's applications or job search status."
+  }
+}

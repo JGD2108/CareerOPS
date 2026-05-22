@@ -1,0 +1,23 @@
+{
+  "id": "47404570-72dc-499c-8764-81cbfb039b42",
+  "timestamp": "2026-05-19T16:29:47.128600Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24354,
+  "output_len": 391,
+  "estimated_input_tokens": 6213,
+  "estimated_output_tokens": 97,
+  "estimated_total_tokens": 6311,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "job_alert",
+    "company_name": "BairesDev",
+    "role_hint": "Desarrollador React Frontend",
+    "status_hint": null,
+    "urgency": "normal",
+    "requires_reply": false,
+    "suggested_action": "Open the job posting to review details and consider applying, save or ignore.",
+    "reasoning": "New job alert matches your React frontend/remote preferences; no application status reported."
+  }
+}

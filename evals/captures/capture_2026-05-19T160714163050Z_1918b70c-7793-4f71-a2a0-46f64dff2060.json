@@ -1,0 +1,23 @@
+{
+  "id": "1918b70c-7793-4f71-a2a0-46f64dff2060",
+  "timestamp": "2026-05-19T16:07:14.163050Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 276,
+  "output_len": 352,
+  "estimated_input_tokens": 194,
+  "estimated_output_tokens": 88,
+  "estimated_total_tokens": 282,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "interview_invitation",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "normal",
+    "requires_reply": true,
+    "suggested_action": "Reply to confirm availability for the technical interview next week.",
+    "reasoning": "The email is from a recruiter about scheduling a technical interview."
+  }
+}

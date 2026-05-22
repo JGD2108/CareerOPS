@@ -1,0 +1,23 @@
+{
+  "id": "05456d67-712c-4002-8981-08a77d71e09b",
+  "timestamp": "2026-05-19T16:07:28.993308Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 291,
+  "output_len": 401,
+  "estimated_input_tokens": 197,
+  "estimated_output_tokens": 100,
+  "estimated_total_tokens": 298,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "application_confirmation",
+    "company_name": "Example Co",
+    "role_hint": "Senior Engineer",
+    "status_hint": "Applied",
+    "urgency": "normal",
+    "requires_reply": false,
+    "suggested_action": "Track your application status on LinkedIn.",
+    "reasoning": "Your email indicates that your application for Senior Engineer at Example Co was sent via LinkedIn; this is an application update."
+  }
+}

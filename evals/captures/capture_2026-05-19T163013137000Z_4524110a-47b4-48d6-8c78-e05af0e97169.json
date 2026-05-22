@@ -1,0 +1,23 @@
+{
+  "id": "4524110a-47b4-48d6-8c78-e05af0e97169",
+  "timestamp": "2026-05-19T16:30:13.137000Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 16500,
+  "output_len": 472,
+  "estimated_input_tokens": 4250,
+  "estimated_output_tokens": 118,
+  "estimated_total_tokens": 4368,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Data Engineer Academy",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action required; consider unsubscribing if not interested.",
+    "reasoning": "Promotional/mailing content about an Amex SQL interview question and coaching services. Not a direct job application, recruiter communication, interview invite, assessment, rejection, or offer."
+  }
+}

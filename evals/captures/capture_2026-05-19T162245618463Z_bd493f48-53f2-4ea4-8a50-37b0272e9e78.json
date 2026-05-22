@@ -1,0 +1,23 @@
+{
+  "id": "bd493f48-53f2-4ea4-8a50-37b0272e9e78",
+  "timestamp": "2026-05-19T16:22:45.618463Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24341,
+  "output_len": 482,
+  "estimated_input_tokens": 6210,
+  "estimated_output_tokens": 120,
+  "estimated_total_tokens": 6330,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "job_alert",
+    "company_name": null,
+    "role_hint": "Multiple software engineer roles advertised (Colombia/remote)",
+    "status_hint": null,
+    "urgency": "not specified",
+    "requires_reply": false,
+    "suggested_action": "Review the highlighted job postings and apply to any roles of interest through LinkedIn.",
+    "reasoning": "The email is a LinkedIn job alert digest listing several software engineer opportunities in Colombia/remote, relevant to ongoing job search."
+  }
+}

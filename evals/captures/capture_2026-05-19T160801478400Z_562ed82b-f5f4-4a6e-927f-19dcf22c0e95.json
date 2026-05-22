@@ -1,0 +1,23 @@
+{
+  "id": "562ed82b-f5f4-4a6e-927f-19dcf22c0e95",
+  "timestamp": "2026-05-19T16:08:01.478400Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 255,
+  "output_len": 276,
+  "estimated_input_tokens": 188,
+  "estimated_output_tokens": 69,
+  "estimated_total_tokens": 257,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No action required for job search; security notice.",
+    "reasoning": "Security alert unrelated to job applications."
+  }
+}

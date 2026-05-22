@@ -7,6 +7,9 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from app.config import get_settings
+from datetime import datetime
+from pathlib import Path
+import uuid
 
 
 settings = get_settings()
@@ -92,7 +95,35 @@ def generate_structured_output(
     output_text = getattr(response, "output_text", None)
     if not output_text:
         raise ValueError("The AI model returned an empty structured response.")
-    return schema_model.model_validate(json.loads(output_text))
+    parsed = schema_model.model_validate(json.loads(output_text))
+
+    # Optional evaluation capture: write structured capture for offline analysis
+    capture_dir = settings.eval_capture_dir
+    try:
+        if capture_dir:
+            path = Path(capture_dir)
+            path.mkdir(parents=True, exist_ok=True)
+            capture = {
+                "id": str(uuid.uuid4()),
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "schema_name": schema_name,
+                "model": model or settings.openai_model,
+                "system_prompt_len": len(system_prompt),
+                "user_prompt_len": len(user_prompt),
+                "output_len": len(output_text),
+                # approximate tokens = chars / 4
+                "estimated_input_tokens": int((len(system_prompt) + len(user_prompt)) / 4),
+                "estimated_output_tokens": int(len(output_text) / 4),
+                "estimated_total_tokens": int((len(system_prompt) + len(user_prompt) + len(output_text)) / 4),
+                "parsed": json.loads(output_text),
+            }
+            fname = f"capture_{capture['timestamp'].replace(':','').replace('.','')}_{capture['id']}.json"
+            (path / fname).write_text(json.dumps(capture, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        # Never fail the agent because of capture errors.
+        pass
+
+    return parsed
 
 
 def generate_embedding(text: str, *, model: str | None = None) -> list[float]:

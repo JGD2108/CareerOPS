@@ -1,0 +1,23 @@
+{
+  "id": "6b10aeaa-e4c0-4034-80d4-2571a54f1da4",
+  "timestamp": "2026-05-19T16:34:50.587491Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24334,
+  "output_len": 405,
+  "estimated_input_tokens": 6208,
+  "estimated_output_tokens": 101,
+  "estimated_total_tokens": 6309,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "Unsubscribe or mark as read from LinkedIn job alerts",
+    "reasoning": "Marketing/notification email (LinkedIn job alert digest) with multiple job postings; no indication of a candidate applying, interviewing, or following up on a specific role."
+  }
+}

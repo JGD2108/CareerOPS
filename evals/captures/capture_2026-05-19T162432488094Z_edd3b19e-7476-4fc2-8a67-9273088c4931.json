@@ -1,0 +1,23 @@
+{
+  "id": "edd3b19e-7476-4fc2-8a67-9273088c4931",
+  "timestamp": "2026-05-19T16:24:32.488094Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24341,
+  "output_len": 406,
+  "estimated_input_tokens": 6210,
+  "estimated_output_tokens": 101,
+  "estimated_total_tokens": 6311,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Sezzle",
+    "role_hint": "Junior Software Engineer (Colombia)",
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No action required; this is a job alert email.",
+    "reasoning": "Marketing job alert email (LinkedIn) about a new job match; does not indicate an application, interviewer communication, or recruiter follow-up."
+  }
+}

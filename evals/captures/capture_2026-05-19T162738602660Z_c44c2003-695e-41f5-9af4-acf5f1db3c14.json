@@ -1,0 +1,23 @@
+{
+  "id": "c44c2003-695e-41f5-9af4-acf5f1db3c14",
+  "timestamp": "2026-05-19T16:27:38.602660Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24323,
+  "output_len": 392,
+  "estimated_input_tokens": 6205,
+  "estimated_output_tokens": 98,
+  "estimated_total_tokens": 6303,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "job_alert",
+    "company_name": null,
+    "role_hint": "Ingeniero de software",
+    "status_hint": null,
+    "urgency": "normal",
+    "requires_reply": false,
+    "suggested_action": "View the listed jobs on LinkedIn and apply if interested.",
+    "reasoning": "LinkedIn job alert digest with multiple software engineer roles in Colombia; not an application-specific email."
+  }
+}

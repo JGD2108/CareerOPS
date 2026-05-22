@@ -1,0 +1,59 @@
+{
+  "id": "45690f14-19f6-4fe6-9282-72d191d10e17",
+  "timestamp": "2026-05-19T16:05:38.142508Z",
+  "schema_name": "careerops_profile_extraction",
+  "model": "gpt-5-mini",
+  "system_prompt_len": 528,
+  "user_prompt_len": 373,
+  "output_len": 1450,
+  "estimated_input_tokens": 225,
+  "estimated_output_tokens": 362,
+  "estimated_total_tokens": 587,
+  "parsed": {
+    "display_name": "María López",
+    "headline": "DevOps engineer",
+    "location": null,
+    "summary": "DevOps engineer. Experienced with Kubernetes, Terraform, Docker, CI/CD pipelines and monitoring. Speaks Spanish and English.",
+    "communication_style": [
+      "Speaks Spanish",
+      "Speaks English"
+    ],
+    "work_preferences": [],
+    "skills": [
+      {
+        "name": "Kubernetes",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "Experienced with Kubernetes, Terraform, Docker, CI/CD pipelines and monitoring."
+      },
+      {
+        "name": "Terraform",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "Experienced with Kubernetes, Terraform, Docker, CI/CD pipelines and monitoring."
+      },
+      {
+        "name": "Docker",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "Experienced with Kubernetes, Terraform, Docker, CI/CD pipelines and monitoring."
+      },
+      {
+        "name": "CI/CD pipelines",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "Experienced with Kubernetes, Terraform, Docker, CI/CD pipelines and monitoring."
+      },
+      {
+        "name": "monitoring",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "Experienced with Kubernetes, Terraform, Docker, CI/CD pipelines and monitoring."
+      }
+    ],
+    "projects": [],
+    "experiences": [],
+    "education": [],
+    "certifications": []
+  }
+}

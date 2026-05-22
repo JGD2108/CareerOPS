@@ -1,0 +1,23 @@
+{
+  "id": "4a0683c1-ce51-405a-ba6c-74fadebc4b9e",
+  "timestamp": "2026-05-19T16:35:39.083273Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24332,
+  "output_len": 406,
+  "estimated_input_tokens": 6208,
+  "estimated_output_tokens": 101,
+  "estimated_total_tokens": 6309,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No direct action required; ignore or archive this job-alert digest.",
+    "reasoning": "This is a LinkedIn job alert digest newsletter, not a direct job application, recruiter communication, or interview/assessment-related message."
+  }
+}

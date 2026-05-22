@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -105,6 +105,29 @@ class NotificationChannel(StrEnum):
     EMAIL = "email"
 
 
+class PublicJobStatus(StrEnum):
+    OPEN = "OPEN"
+    CLOSED = "CLOSED"
+    REMOVED = "REMOVED"
+    REDIRECTED = "REDIRECTED"
+    NO_LONGER_ACCEPTING_APPLICATIONS = "NO_LONGER_ACCEPTING_APPLICATIONS"
+    LOGIN_REQUIRED = "LOGIN_REQUIRED"
+    UNKNOWN = "UNKNOWN"
+
+
+class PortalCheckConfidence(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class AgentRunStatus(StrEnum):
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    PARTIAL = "partial"
+
+
 class Company(Base):
     __tablename__ = "companies"
 
@@ -118,6 +141,7 @@ class Company(Base):
     )
 
     jobs: Mapped[list["Job"]] = relationship(back_populates="company")
+    portal_credentials: Mapped[list["PortalCredential"]] = relationship(back_populates="company")
 
 
 class Job(Base):
@@ -132,6 +156,21 @@ class Job(Base):
     work_mode: Mapped[str | None] = mapped_column(String(100))
     seniority: Mapped[str | None] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    application_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    availability_status: Mapped[str] = mapped_column(String(50), nullable=False, default="unknown")
+    availability_reason: Mapped[str | None] = mapped_column(Text)
+    availability_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    description_status: Mapped[str] = mapped_column(String(50), nullable=False, default="missing")
+    description_quality: Mapped[str] = mapped_column(String(50), nullable=False, default="unknown")
+    description_source: Mapped[str | None] = mapped_column(String(100))
+    fetch_status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
+    resolved_description: Mapped[str | None] = mapped_column(Text)
+    resolved_description_html: Mapped[str | None] = mapped_column(Text)
+    resolved_description_url: Mapped[str | None] = mapped_column(String(1000))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution_confidence: Mapped[float | None] = mapped_column(Float)
+    resolution_notes: Mapped[str | None] = mapped_column(Text)
     raw_payload: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -144,6 +183,10 @@ class Job(Base):
     cv_versions: Mapped[list["CVVersion"]] = relationship(back_populates="job")
     message_drafts: Mapped[list["MessageDraft"]] = relationship(back_populates="job")
     raw_jobs: Mapped[list["RawJob"]] = relationship(back_populates="normalized_job")
+    description_resolution_attempts: Mapped[list["JobDescriptionResolutionAttempt"]] = relationship(
+        back_populates="job",
+        cascade="all, delete-orphan",
+    )
 
     @property
     def source_trace(self) -> dict:
@@ -184,6 +227,39 @@ class RawJob(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     normalized_job: Mapped[Job | None] = relationship(back_populates="raw_jobs")
+
+
+class JobDescriptionResolutionAttempt(Base):
+    __tablename__ = "job_description_resolution_attempts"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    attempted_source: Mapped[str] = mapped_column(String(100), nullable=False)
+    attempted_url: Mapped[str | None] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    reason: Mapped[str | None] = mapped_column(Text)
+    raw_response_ref: Mapped[str | None] = mapped_column(String(1000))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    attempt_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    job: Mapped[Job] = relationship(back_populates="description_resolution_attempts")
+
+
+class DismissedJob(Base):
+    __tablename__ = "dismissed_jobs"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    fingerprint: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    source: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    source_company_key: Mapped[str | None] = mapped_column(String(255))
+    external_job_id: Mapped[str | None] = mapped_column(String(255))
+    source_url: Mapped[str | None] = mapped_column(String(1000))
+    company_name: Mapped[str | None] = mapped_column(String(255))
+    title: Mapped[str | None] = mapped_column(String(255))
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class DiscoverySource(Base):
@@ -476,6 +552,11 @@ class Application(Base):
     )
     notes: Mapped[str | None] = mapped_column(Text)
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    latest_portal_status: Mapped[str | None] = mapped_column(String(80))
+    latest_portal_confidence: Mapped[str | None] = mapped_column(String(30))
+    latest_portal_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    portal_login_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    portal_user_action_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -484,6 +565,22 @@ class Application(Base):
     job: Mapped[Job] = relationship(back_populates="applications")
     emails: Mapped[list[Email]] = relationship(back_populates="application")
     actions: Mapped[list["Action"]] = relationship(back_populates="application")
+    portal_credentials: Mapped[list["PortalCredential"]] = relationship(back_populates="application")
+    status_check_events: Mapped[list["ApplicationStatusCheckEvent"]] = relationship(back_populates="application")
+
+    @property
+    def job_title(self) -> str | None:
+        return self.job.title if self.job else None
+
+    @property
+    def company_name(self) -> str | None:
+        if not self.job or not self.job.company:
+            return None
+        return self.job.company.name
+
+    @property
+    def job_source(self) -> str | None:
+        return self.job.source if self.job else None
 
 
 class JobScore(Base):
@@ -614,6 +711,110 @@ class NotificationSummary(Base):
     content: Mapped[dict] = mapped_column(JSONB, nullable=False)
     rendered_text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AgentRun(Base):
+    __tablename__ = "agent_runs"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    agent_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    trigger_type: Mapped[str] = mapped_column(String(50), nullable=False, default="manual")
+    status: Mapped[AgentRunStatus] = mapped_column(
+        Enum(
+            AgentRunStatus,
+            name="agent_run_status",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        default=AgentRunStatus.RUNNING,
+    )
+    applications_checked: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    changes_detected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    status_check_events: Mapped[list["ApplicationStatusCheckEvent"]] = relationship(back_populates="agent_run")
+    model_usage_logs: Mapped[list["ModelUsageLog"]] = relationship(back_populates="agent_run")
+
+
+class PortalCredential(Base):
+    __tablename__ = "portal_credentials"
+    __table_args__ = (
+        UniqueConstraint("application_id", "portal_url", "username", name="uq_portal_credentials_app_url_username"),
+    )
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    application_id: Mapped[UUID] = mapped_column(ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True)
+    company_id: Mapped[UUID | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), index=True)
+    portal_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    portal_url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    username: Mapped[str] = mapped_column(String(320), nullable=False)
+    encrypted_password: Mapped[str] = mapped_column(Text, nullable=False)
+    encryption_key_id: Mapped[str | None] = mapped_column(String(255))
+    mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    daily_check_allowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    application: Mapped[Application] = relationship(back_populates="portal_credentials")
+    company: Mapped[Company | None] = relationship(back_populates="portal_credentials")
+
+
+class ApplicationStatusCheckEvent(Base):
+    __tablename__ = "application_status_check_events"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    application_id: Mapped[UUID] = mapped_column(ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("agent_runs.id", ondelete="SET NULL"), index=True)
+    source_url: Mapped[str | None] = mapped_column(String(1000))
+    previous_status: Mapped[str | None] = mapped_column(String(80))
+    new_status: Mapped[str] = mapped_column(String(80), nullable=False, default=PublicJobStatus.UNKNOWN.value)
+    public_job_status: Mapped[PublicJobStatus] = mapped_column(
+        Enum(
+            PublicJobStatus,
+            name="public_job_status",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        default=PublicJobStatus.UNKNOWN,
+    )
+    evidence_summary: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[PortalCheckConfidence] = mapped_column(
+        Enum(
+            PortalCheckConfidence,
+            name="portal_check_confidence",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        nullable=False,
+        default=PortalCheckConfidence.LOW,
+    )
+    login_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    credentials_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    user_action_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    event_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    application: Mapped[Application] = relationship(back_populates="status_check_events")
+    agent_run: Mapped[AgentRun | None] = relationship(back_populates="status_check_events")
+
+
+class ModelUsageLog(Base):
+    __tablename__ = "model_usage_logs"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    agent_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("agent_runs.id", ondelete="SET NULL"), index=True)
+    task_type: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    estimated_cost: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    agent_run: Mapped[AgentRun | None] = relationship(back_populates="model_usage_logs")
 
 
 class AuditLog(Base):

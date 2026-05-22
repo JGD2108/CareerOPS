@@ -1,13 +1,24 @@
 @import "tailwindcss";
 
 :root {
+  --app-bg: #f6f7f5;
+  --app-bg-soft: #f9faf7;
+  --app-surface: rgba(255, 255, 252, 0.94);
+  --app-surface-strong: #ffffff;
+  --app-ink: #181b18;
+  --app-muted: #687067;
+  --app-border: rgba(24, 27, 24, 0.1);
+  --app-border-strong: rgba(24, 27, 24, 0.18);
+  --app-accent: #0f6b5f;
+  --app-accent-soft: rgba(15, 107, 95, 0.1);
+  --app-warning: #b45309;
+  --app-danger: #b42318;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+    "Aptos", "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #0f172a;
-  background: #f1f5f9;
+  color: var(--app-ink);
+  background: linear-gradient(180deg, #fbfcfa 0%, #f2f4f1 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -26,6 +37,8 @@ body,
 
 body {
   margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #fbfcfa 0%, #f3f5f1 58%, #eef1ec 100%);
 }
 
 button,
@@ -33,4 +46,67 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.26;
+  background-image:
+    linear-gradient(rgba(24, 27, 24, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(24, 27, 24, 0.025) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(180deg, white, rgba(255, 255, 255, 0.35));
+}
+
+#root {
+  isolation: isolate;
+}
+
+.crm-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--app-muted);
+}
+
+.crm-card {
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-strong);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(24, 27, 24, 0.04);
+}
+
+.crm-subcard {
+  border: 1px solid var(--app-border);
+  background: var(--app-bg-soft);
+  border-radius: 10px;
+}
+
+.crm-button {
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  transition: background-color 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.crm-textarea,
+.crm-input,
+.crm-select {
+  border: 1px solid var(--app-border-strong);
+  background: #fff;
+  border-radius: 10px;
+  color: var(--app-ink);
+  outline: none;
+}
+
+.crm-textarea:focus,
+.crm-input:focus,
+.crm-select:focus {
+  border-color: var(--app-accent);
+  box-shadow: 0 0 0 3px rgba(15, 107, 95, 0.1);
 }

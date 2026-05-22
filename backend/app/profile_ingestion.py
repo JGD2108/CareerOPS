@@ -1,10 +1,12 @@
 import re
 from dataclasses import dataclass
+from uuid import UUID
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.audit import write_audit_log
+from app.documents import is_evaluation_artifact_document
 from app.models import (
     CandidateProfile,
     Document,
@@ -17,6 +19,10 @@ from app.models import (
     ProfileSkill,
     SourceType,
 )
+from app.text_normalization import normalize_bullet_text
+from app.text_normalization import normalize_display_list
+from app.text_normalization import normalize_display_text
+from app.text_normalization import normalize_text_block
 
 
 @dataclass(frozen=True)
@@ -91,7 +97,7 @@ def _clean_latex(text: str) -> str:
     cleaned = re.sub(r"\\small\s*", "", cleaned)
     cleaned = re.sub(r"[{}]", "", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned)
-    return cleaned.strip()
+    return normalize_text_block(cleaned) or ""
 
 
 def _extract_sections(text: str) -> dict[str, Section]:
@@ -149,11 +155,17 @@ def _get_or_create_profile(db: Session) -> CandidateProfile:
 
 
 def _latest_cv_document(db: Session) -> Document | None:
-    return db.scalar(
-        select(Document)
-        .where(Document.source_type == SourceType.CV, Document.extracted_text.is_not(None))
-        .order_by(Document.created_at.desc())
+    documents = list(
+        db.scalars(
+            select(Document)
+            .where(Document.source_type == SourceType.CV, Document.extracted_text.is_not(None))
+            .order_by(Document.created_at.desc())
+        )
     )
+    for document in documents:
+        if not is_evaluation_artifact_document(document):
+            return document
+    return None
 
 
 def _clear_profile_details(db: Session, profile_id) -> None:
@@ -203,6 +215,11 @@ def extract_profile_from_latest_cv(db: Session) -> CandidateProfile:
     profile.location = "Barranquilla, Colombia" if "Barranquilla, Colombia" in text else profile.location
     if "Summary" in sections:
         profile.summary = _clean_latex(sections["Summary"].text)
+    profile.preferences = {
+        **(profile.preferences or {}),
+        "source_document_id": str(document.id),
+        "profile_origin": "deterministic_cv_parser",
+    }
     if profile.display_name:
         _record_profile_source(
             db,
@@ -406,9 +423,10 @@ def extract_profile_from_latest_cv(db: Session) -> CandidateProfile:
 
 
 def get_profile(db: Session) -> CandidateProfile | None:
-    return db.scalar(
+    profile = db.scalar(
         select(CandidateProfile)
         .options(
+            selectinload(CandidateProfile.sources).selectinload(ProfileSource.document),
             selectinload(CandidateProfile.skills),
             selectinload(CandidateProfile.skills).selectinload(ProfileSkill.aliases),
             selectinload(CandidateProfile.projects),
@@ -418,3 +436,72 @@ def get_profile(db: Session) -> CandidateProfile | None:
         )
         .order_by(CandidateProfile.created_at.asc())
     )
+    if not profile:
+        return None
+
+    source_document_ids = [
+        source.document_id
+        for source in profile.sources
+        if source.document_id is not None
+    ]
+    if source_document_ids:
+        source_documents = [source.document for source in profile.sources if source.document is not None]
+        if source_documents and all(is_evaluation_artifact_document(document) for document in source_documents):
+            return None
+
+    source_document_id = None
+    if isinstance(profile.preferences, dict):
+        raw_source_document_id = profile.preferences.get("source_document_id")
+        if isinstance(raw_source_document_id, str):
+            source_document_id = raw_source_document_id
+    if source_document_id:
+        try:
+            document = db.get(Document, UUID(source_document_id))
+        except ValueError:
+            document = None
+        if document and is_evaluation_artifact_document(document):
+            return None
+
+    profile.display_name = normalize_display_text(profile.display_name)
+    profile.headline = normalize_display_text(profile.headline)
+    profile.location = normalize_display_text(profile.location)
+    profile.summary = normalize_display_text(profile.summary)
+
+    for skill in profile.skills:
+        skill.name = normalize_display_text(skill.name, fallback=skill.name) or skill.name
+        skill.category = normalize_display_text(skill.category)
+        skill.evidence_text = normalize_display_text(skill.evidence_text, fallback=skill.evidence_text) or skill.evidence_text
+
+    for project in profile.projects:
+        project.name = normalize_display_text(project.name, fallback=project.name) or project.name
+        project.description = normalize_display_text(project.description)
+        project.technologies = normalize_display_list(project.technologies)
+        project.impact = normalize_display_text(project.impact)
+        project.evidence_text = normalize_display_text(project.evidence_text, fallback=project.evidence_text) or project.evidence_text
+
+    for experience in profile.experiences:
+        experience.company = normalize_display_text(experience.company, fallback=experience.company) or experience.company
+        experience.title = normalize_display_text(experience.title, fallback=experience.title) or experience.title
+        experience.location = normalize_display_text(experience.location)
+        experience.start_date = normalize_display_text(experience.start_date)
+        experience.end_date = normalize_display_text(experience.end_date)
+        experience.bullets = [
+            bullet
+            for bullet in (normalize_bullet_text(item) for item in experience.bullets or [])
+            if bullet
+        ]
+        experience.evidence_text = normalize_display_text(experience.evidence_text, fallback=experience.evidence_text) or experience.evidence_text
+
+    for education in profile.education:
+        education.institution = normalize_display_text(education.institution, fallback=education.institution) or education.institution
+        education.degree = normalize_display_text(education.degree, fallback=education.degree) or education.degree
+        education.location = normalize_display_text(education.location)
+        education.dates = normalize_display_text(education.dates)
+        education.evidence_text = normalize_display_text(education.evidence_text, fallback=education.evidence_text) or education.evidence_text
+
+    for certification in profile.certifications:
+        certification.name = normalize_display_text(certification.name, fallback=certification.name) or certification.name
+        certification.issuer = normalize_display_text(certification.issuer)
+        certification.evidence_text = normalize_display_text(certification.evidence_text, fallback=certification.evidence_text) or certification.evidence_text
+
+    return profile

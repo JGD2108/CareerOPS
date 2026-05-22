@@ -1,0 +1,23 @@
+{
+  "id": "bc3815eb-dc46-4b91-9178-dddfc3c9bf54",
+  "timestamp": "2026-05-19T16:29:30.146906Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 3939,
+  "output_len": 431,
+  "estimated_input_tokens": 1109,
+  "estimated_output_tokens": 107,
+  "estimated_total_tokens": 1217,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "application_confirmation",
+    "company_name": "Rhenus",
+    "role_hint": null,
+    "status_hint": "Reviewed",
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action needed; await further updates from the recruiter.",
+    "reasoning": "Email confirms receipt of the application to Rhenus and indicates the recruitment team is reviewing submissions, with updates to follow. Includes Job ID JR121071."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "9a8a65a3-c240-4562-a90f-8651835829c2",
+  "timestamp": "2026-05-19T16:39:18.076117Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 5409,
+  "output_len": 417,
+  "estimated_input_tokens": 1477,
+  "estimated_output_tokens": 104,
+  "estimated_total_tokens": 1581,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No action needed",
+    "reasoning": "This is a LinkedIn messages digest notifying about a new message; it is not related to a job application, recruiter follow-up, interview, assessment, rejection, offer, documents requested, or form pending."
+  }
+}

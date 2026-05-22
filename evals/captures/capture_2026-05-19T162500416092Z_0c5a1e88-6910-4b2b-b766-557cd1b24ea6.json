@@ -1,0 +1,23 @@
+{
+  "id": "0c5a1e88-6910-4b2b-b766-557cd1b24ea6",
+  "timestamp": "2026-05-19T16:25:00.416092Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24341,
+  "output_len": 443,
+  "estimated_input_tokens": 6210,
+  "estimated_output_tokens": 110,
+  "estimated_total_tokens": 6321,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "job_alert",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "Review the job alert digest and click through to any interesting roles to view details or apply.",
+    "reasoning": "Email is a LinkedIn job alert digest listing multiple software roles in Colombia; relevant to ongoing job search but not an application or recruiter response yet."
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "id": "a8a835d8-cc8c-429d-84af-d55fe6b9e6e2",
+  "timestamp": "2026-05-19T16:05:57.083756Z",
+  "schema_name": "careerops_profile_extraction",
+  "model": "gpt-5-mini",
+  "system_prompt_len": 528,
+  "user_prompt_len": 374,
+  "output_len": 1734,
+  "estimated_input_tokens": 225,
+  "estimated_output_tokens": 433,
+  "estimated_total_tokens": 659,
+  "parsed": {
+    "display_name": "John Smith",
+    "headline": "Frontend engineer focusing on React, TypeScript, Vite, and accessibility.",
+    "location": null,
+    "summary": "John Smith is a frontend engineer focusing on React, TypeScript, Vite, and accessibility. He led a migration to a modern component library.",
+    "communication_style": [],
+    "work_preferences": [],
+    "skills": [
+      {
+        "name": "React",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "focusing on React, TypeScript, Vite, and accessibility."
+      },
+      {
+        "name": "TypeScript",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "focusing on React, TypeScript, Vite, and accessibility."
+      },
+      {
+        "name": "Vite",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "focusing on React, TypeScript, Vite, and accessibility."
+      },
+      {
+        "name": "accessibility",
+        "category": null,
+        "evidence_level": "strong",
+        "evidence_text": "focusing on React, TypeScript, Vite, and accessibility."
+      }
+    ],
+    "projects": [
+      {
+        "name": "Migration to a modern component library",
+        "description": "He led a migration to a modern component library.",
+        "technologies": [],
+        "impact": null,
+        "evidence_text": "He led a migration to a modern component library."
+      }
+    ],
+    "experiences": [
+      {
+        "company": "null",
+        "title": "null",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "bullets": [
+          "Led a migration to a modern component library."
+        ],
+        "evidence_text": "He led a migration to a modern component library."
+      }
+    ],
+    "education": [],
+    "certifications": []
+  }
+}

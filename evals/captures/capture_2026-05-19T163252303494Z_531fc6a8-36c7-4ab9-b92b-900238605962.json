@@ -1,0 +1,23 @@
+{
+  "id": "531fc6a8-36c7-4ab9-b92b-900238605962",
+  "timestamp": "2026-05-19T16:32:52.303494Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 17081,
+  "output_len": 293,
+  "estimated_input_tokens": 4395,
+  "estimated_output_tokens": 73,
+  "estimated_total_tokens": 4468,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No action needed",
+    "reasoning": "Marketing newsletter (Medium Daily Digest). Not related to job search activities."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "667fe4d7-f40e-4cc8-928e-875e716c31c5",
+  "timestamp": "2026-05-19T16:34:42.810218Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24331,
+  "output_len": 320,
+  "estimated_input_tokens": 6207,
+  "estimated_output_tokens": 80,
+  "estimated_total_tokens": 6287,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "Unsubscribe if not interested",
+    "reasoning": "Marketing / job alert newsletter (LinkedIn job alerts) with no application or recruiter contact"
+  }
+}

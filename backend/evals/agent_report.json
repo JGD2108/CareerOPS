@@ -1,0 +1,179 @@
+{
+  "inbox_triage": {
+    "sample_count": 12,
+    "expected_positive": 8,
+    "predicted_positive": 8,
+    "true_positives": 8,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "false_positive_rate": 0.0,
+    "category_accuracy": 1.0,
+    "rows": [
+      {
+        "id": "job_alert_noise",
+        "expected_category": "job_alert",
+        "predicted_category": "job_alert",
+        "expected_relevant_to_careerops": false,
+        "predicted_relevant_to_careerops": false,
+        "expected_requires_reply": false,
+        "predicted_requires_reply": false,
+        "expected_urgency": "normal",
+        "predicted_urgency": "normal",
+        "predicted_suggested_action": "Review the job alert and score any relevant roles before applying."
+      },
+      {
+        "id": "application_confirmation",
+        "expected_category": "application_confirmation",
+        "predicted_category": "application_confirmation",
+        "expected_relevant_to_careerops": true,
+        "predicted_relevant_to_careerops": true,
+        "expected_requires_reply": false,
+        "predicted_requires_reply": false,
+        "expected_urgency": "normal",
+        "predicted_urgency": "normal",
+        "predicted_suggested_action": "Imported as a LinkedIn application confirmation and marked applied when the role can be parsed."
+      },
+      {
+        "id": "interview_invitation",
+        "expected_category": "interview_invitation",
+        "predicted_category": "interview_invitation",
+        "expected_relevant_to_careerops": true,
+        "predicted_relevant_to_careerops": true,
+        "expected_requires_reply": true,
+        "predicted_requires_reply": true,
+        "expected_urgency": "high",
+        "predicted_urgency": "high",
+        "predicted_suggested_action": "Reply with availability and prepare for the interview."
+      },
+      {
+        "id": "coding_assessment",
+        "expected_category": "coding_assessment",
+        "predicted_category": "coding_assessment",
+        "expected_relevant_to_careerops": true,
+        "predicted_relevant_to_careerops": true,
+        "expected_requires_reply": false,
+        "predicted_requires_reply": true,
+        "expected_urgency": "high",
+        "predicted_urgency": "high",
+        "predicted_suggested_action": "Review the assessment instructions and confirm your plan."
+      },
+      {
+        "id": "rejection",
+        "expected_category": "rejection",
+        "predicted_category": "rejection",
+        "expected_relevant_to_careerops": true,
+        "predicted_relevant_to_careerops": true,
+        "expected_requires_reply": false,
+        "predicted_requires_reply": false,
+        "expected_urgency": "normal",
+        "predicted_urgency": "normal",
+        "predicted_suggested_action": "Update the tracker to rejected and archive the thread."
+      },
+      {
+        "id": "newsletter_noise",
+        "expected_category": "other",
+        "predicted_category": "other",
+        "expected_relevant_to_careerops": false,
+        "predicted_relevant_to_careerops": false,
+        "expected_requires_reply": false,
+        "predicted_requires_reply": false,
+        "expected_urgency": "normal",
+        "predicted_urgency": "normal",
+        "predicted_suggested_action": "Ignore for CareerOps unless it is manually linked to an application."
+      },
+      {
+        "id": "recruiter_followup_spanish",
+        "expected_category": "recruiter_follow_up",
+        "predicted_category": "recruiter_follow_up",
+        "expected_relevant_to_careerops": true,
+        "predicted_relevant_to_careerops": true,
+        "expected_requires_reply": true,
+        "predicted_requires_reply": true,
+        "expected_urgency": "normal",
+        "predicted_urgency": "normal",
+        "predicted_suggested_action": "Draft a recruiter reply and decide whether to continue."
+      },
+      {
+        "id": "linkedin_application_confirmation_variation",
+        "expected_category": "application_confirmation",
+        "predicted_category": "application_confirmation",
+        "expected_relevant_to_careerops": true,
+        "predicted_relevant_to_careerops": true,
+        "expected_requires_reply": false,
+        "predicted_requires_reply": false,
+        "expected_urgency": "normal",
+        "predicted_urgency": "normal",
+        "predicted_suggested_action": "Imported as a LinkedIn application confirmation and marked applied when the role can be parsed."
+      },
+      {
+        "id": "generic_promo_noise",
+        "expected_category": "other",
+        "predicted_category": "other",
+        "expected_relevant_to_careerops": false,
+        "predicted_relevant_to_careerops": false,
+        "expected_requires_reply": false,
+        "predicted_requires_reply": false,
+        "expected_urgency": "normal",
+        "predicted_urgency": "normal",
+        "predicted_suggested_action": "Ignore for CareerOps unless it is manually linked to an application."
+      },
+      {
+        "id": "offer_letter_with_compensation",
+        "expected_category": "offer",
+        "predicted_category": "offer",
+        "expected_relevant_to_careerops": true,
+        "predicted_relevant_to_careerops": true,
+        "expected_requires_reply": true,
+        "predicted_requires_reply": true,
+        "expected_urgency": "high",
+        "predicted_urgency": "high",
+        "predicted_suggested_action": "Review the offer and draft a thoughtful response."
+      },
+      {
+        "id": "security_alert_not_relevant",
+        "expected_category": "other",
+        "predicted_category": "other",
+        "expected_relevant_to_careerops": false,
+        "predicted_relevant_to_careerops": false,
+        "expected_requires_reply": false,
+        "predicted_requires_reply": false,
+        "expected_urgency": "normal",
+        "predicted_urgency": "normal",
+        "predicted_suggested_action": "Ignore for CareerOps unless it is manually linked to an application."
+      },
+      {
+        "id": "document_request",
+        "expected_category": "documents_requested",
+        "predicted_category": "documents_requested",
+        "expected_relevant_to_careerops": true,
+        "predicted_relevant_to_careerops": true,
+        "expected_requires_reply": true,
+        "predicted_requires_reply": true,
+        "expected_urgency": "high",
+        "predicted_urgency": "high",
+        "predicted_suggested_action": "Prepare the requested documents and draft a reply."
+      }
+    ]
+  },
+  "profile_extraction": {
+    "sample_count": 4,
+    "expected_fields": [
+      "communication_style",
+      "display_name",
+      "headline",
+      "location",
+      "projects",
+      "skills",
+      "work_preferences"
+    ],
+    "status": "dataset_only",
+    "note": "Pass include_profile_ai=True to run the LangGraph-backed profile extraction evaluator."
+  },
+  "profile_evaluation_mode": "dataset_only",
+  "cost_summary": {
+    "total_calls": 166,
+    "total_estimated_tokens": 758559
+  }
+}

@@ -1,8 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api/v1'
-const CAREEROPS_API_KEY = import.meta.env.VITE_CAREEROPS_API_KEY ?? ''
+import { API_BASE_URL, cvArtifactUrl, requestApi, requestCareerInboxSync } from './lib/api'
+import {
+  cleanDisplayName,
+  cleanDisplayText,
+  normalizeForMatch,
+  payloadText,
+  truncate,
+  unknownToDisplayString,
+} from './lib/text'
+import { InboxSection } from './components/InboxSection'
+import { ProfileSection } from './components/ProfileSection'
+import { AiText } from './components/AiText'
+import type {
+  Application,
+  ApplicationStatusCheckEvent,
+  CandidateProfile,
+  Email,
+  Job,
+  PortalCredential,
+  ResourceState,
+} from './types/dashboard'
 const API_HOSTNAME = (() => {
   try {
     return new URL(API_BASE_URL).hostname
@@ -22,39 +41,21 @@ const GMAIL_CONNECTED_MESSAGE =
       ? `Google connected. Job inbox updated: ${INITIAL_GMAIL_EMAILS} email(s).`
       : 'Google connected.'
 
-type Company = {
-  id: string
-  name: string
-  website_url: string | null
-  notes: string | null
-  created_at: string
-  updated_at: string
+const INCOMPLETE_DESCRIPTION_STATUSES = new Set(['missing', 'partial_from_email', 'failed'])
+
+function isJobDescriptionIncomplete(job: Job | null | undefined) {
+  return !job || INCOMPLETE_DESCRIPTION_STATUSES.has(job.description_status)
 }
 
-type Job = {
-  id: string
-  title: string
-  source: string
-  source_url: string | null
-  location: string | null
-  work_mode: string | null
-  seniority: string | null
-  description: string
-  raw_payload: Record<string, unknown> | null
-  source_trace: Record<string, unknown> | null
-  company: Company | null
-  created_at: string
-  updated_at: string
-}
-
-type Application = {
-  id: string
-  job_id: string
-  status: string
-  notes: string | null
-  applied_at: string | null
-  created_at: string
-  updated_at: string
+function descriptionStatusLabel(job: Job) {
+  if (job.fetch_status === 'needs_manual_review') return 'Needs manual review'
+  if (job.description_status === 'partial_from_email') return 'Partial from email'
+  if (job.description_status === 'manually_provided') return 'Manually provided'
+  if (job.description_status === 'manually_provided_url') return 'Resolved from manual URL'
+  if (job.description_status === 'resolved_from_ats') return `Resolved from ${job.description_source ?? 'ATS'}`
+  if (job.description_status === 'resolved_from_company_site') return 'Resolved from company site'
+  if (job.description_status === 'missing') return 'Missing description'
+  return job.description_status.replaceAll('_', ' ')
 }
 
 type Action = {
@@ -71,70 +72,6 @@ type Action = {
   completed_at: string | null
   created_at: string
   updated_at: string
-}
-
-type Email = {
-  id: string
-  raw_email_id: string
-  gmail_message_id: string | null
-  gmail_thread_id: string | null
-  gmail_history_id: string | null
-  gmail_label_ids: string[] | null
-  application_id: string | null
-  company_name: string | null
-  from_name: string | null
-  from_email: string
-  subject: string | null
-  snippet: string | null
-  body_text: string | null
-  category: string
-  urgency: string
-  requires_reply: boolean
-  suggested_action: string | null
-  gmail_draft_id: string | null
-  received_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-type ProfileSkill = {
-  id: string
-  name: string
-  category: string | null
-  evidence_level: string
-  evidence_text: string
-}
-
-type ProfileProject = {
-  id: string
-  name: string
-  description: string | null
-  technologies: string[] | null
-  impact: string | null
-  evidence_text: string
-}
-
-type ProfileExperience = {
-  id: string
-  company: string
-  title: string
-  location: string | null
-  start_date: string | null
-  end_date: string | null
-  bullets: string[] | null
-  evidence_text: string
-}
-
-type CandidateProfile = {
-  id: string
-  display_name: string | null
-  headline: string | null
-  location: string | null
-  summary: string | null
-  preferences: Record<string, unknown> | null
-  skills: ProfileSkill[]
-  projects: ProfileProject[]
-  experiences: ProfileExperience[]
 }
 
 type DocumentRecord = {
@@ -314,17 +251,62 @@ type JobDiscoveryResponse = {
   matched_jobs: Job[]
 }
 
+type ManualJobDescriptionResponse = {
+  job: Job
+  attempt: JobDescriptionResolutionAttempt
+}
+
+type JobDescriptionResolutionAttempt = {
+  id: string
+  job_id: string
+  attempted_source: string
+  attempted_url: string | null
+  status: string
+  confidence: number | null
+  reason: string | null
+  raw_response_ref: string | null
+  error_message: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
+
+type JobDescriptionResolveResponse = {
+  job_id: string
+  status: string
+  description_status: string
+  description_source: string | null
+  description_quality: string
+  resolved_description_url: string | null
+  confidence: number | null
+  notes: string
+  attempts: JobDescriptionResolutionAttempt[]
+}
+
 type GmailStatus = {
+  oauth_configured: boolean
   credentials_file_exists: boolean
   token_file_exists: boolean
   authenticated: boolean
   scopes: string[]
+  credentials_path: string
+  token_path: string
 }
 
 type GmailOAuthStart = {
   authorization_url: string
   state: string
   redirect_uri: string
+}
+
+type DeleteJobResponse = {
+  message: string
+  deleted_job_id: string
+  title: string
+  company: string
+}
+
+type DeleteApplicationResponse = {
+  message: string
 }
 
 type LinkedInSyncResponse = {
@@ -352,24 +334,28 @@ type SemanticMatch = {
   similarity: number
 }
 
-type ResourceState<T> = {
-  data: T
-  loading: boolean
-  error: string | null
-  unavailable: boolean
-}
-
 type AppSection = 'overview' | 'setup' | 'jobs' | 'applications' | 'inbox' | 'profile'
+type ActionFilter = 'all' | 'possible' | 'blocked' | 'none'
+type PipelineFilter = 'all' | 'active' | 'rejected' | 'actionable' | 'no_action'
+type GuidedAction = 'resume-upload' | 'profile-build' | 'job-review' | 'job-discovery'
 type ActionMutationState = Record<string, boolean>
 type EmailMutationState = Record<string, boolean>
+type PortalCredentialForm = {
+  portal_name: string
+  portal_url: string
+  username: string
+  password: string
+  mfa_enabled: boolean
+  daily_check_allowed: boolean
+}
 
 const DEFAULT_SECTIONS: Array<{ id: AppSection; label: string }> = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'setup', label: 'Setup' },
+  { id: 'overview', label: 'Home' },
   { id: 'jobs', label: 'Jobs' },
   { id: 'applications', label: 'Applications' },
   { id: 'inbox', label: 'Inbox' },
   { id: 'profile', label: 'Profile' },
+  { id: 'setup', label: 'Settings' },
 ]
 
 function createInitialResource<T>(initialData: T): ResourceState<T> {
@@ -381,84 +367,27 @@ function createInitialResource<T>(initialData: T): ResourceState<T> {
   }
 }
 
-async function requestApi<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers)
-  if (init?.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json')
-  }
-  if (CAREEROPS_API_KEY && !headers.has('X-CareerOps-Key')) {
-    headers.set('X-CareerOps-Key', CAREEROPS_API_KEY)
-  }
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers,
-  })
-
-  if (!response.ok) {
-    const error = new Error(`Request failed with status ${response.status}`)
-    ;(error as Error & { status?: number }).status = response.status
-    throw error
-  }
-
-  return (await response.json()) as T
-}
-
-async function requestCareerInboxSync(): Promise<Email[]> {
-  try {
-    return await requestApi<Email[]>('/gmail/sync-career', {
-      method: 'POST',
-    })
-  } catch (error) {
-    const status = (error as Error & { status?: number }).status
-    if (status !== 404) {
-      throw error
-    }
-  }
-
-  const fallbackQueries = [
-    'newer_than:180d {application interview assessment recruiter "coding challenge" "thank you for applying" "we received your application"}',
-    'newer_than:180d {from:greenhouse-mail.io from:greenhouse.io from:lever.co from:ashbyhq.com from:myworkday.com from:icims.com from:smartrecruiters.com}',
-  ]
-  const emailsById = new Map<string, Email>()
-  for (const query of fallbackQueries) {
-    const controller = new AbortController()
-    const timer = window.setTimeout(() => controller.abort(), 20000)
-    try {
-      const syncedEmails = await requestApi<Email[]>('/gmail/sync', {
-        method: 'POST',
-        signal: controller.signal,
-        body: JSON.stringify({
-          query,
-          max_results: 50,
-          skip_existing: true,
-        }),
-      })
-      syncedEmails.forEach((email) => emailsById.set(email.id, email))
-    } catch {
-      // Keep the dashboard responsive if one Gmail search is slow or unsupported.
-    } finally {
-      window.clearTimeout(timer)
-    }
-  }
-  return [...emailsById.values()]
-}
-
-function cvArtifactUrl(cvVersionId: string, artifactFormat: 'pdf' | 'tex'): string {
-  return `${API_BASE_URL}/cv-versions/${cvVersionId}/download?artifact_format=${artifactFormat}`
-}
-
 async function loadResource<T>(
   path: string,
   setter: Dispatch<SetStateAction<ResourceState<T>>>,
   initialData: T,
+  options?: { preserveDataWhileLoading?: boolean },
 ) {
-  setter({
-    data: initialData,
-    loading: true,
-    error: null,
-    unavailable: false,
-  })
+  if (options?.preserveDataWhileLoading) {
+    setter((current) => ({
+      ...current,
+      loading: true,
+      error: null,
+      unavailable: false,
+    }))
+  } else {
+    setter({
+      data: initialData,
+      loading: true,
+      error: null,
+      unavailable: false,
+    })
+  }
 
   try {
     const data = await requestApi<T>(path)
@@ -470,12 +399,21 @@ async function loadResource<T>(
     })
   } catch (error) {
     const status = (error as Error & { status?: number }).status
-    setter({
-      data: initialData,
-      loading: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      unavailable: status === 404,
-    })
+    if (options?.preserveDataWhileLoading) {
+      setter((current) => ({
+        ...current,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        unavailable: status === 404,
+      }))
+    } else {
+      setter({
+        data: initialData,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        unavailable: status === 404,
+      })
+    }
   }
 }
 
@@ -512,18 +450,6 @@ function formatRelativeDate(value: string | null): string {
   return `${diffDays} days ago`
 }
 
-function truncate(text: string | null | undefined, maxLength: number): string {
-  if (!text) {
-    return 'No content available.'
-  }
-
-  if (text.length <= maxLength) {
-    return text
-  }
-
-  return `${text.slice(0, maxLength - 3)}...`
-}
-
 function formatSourceLabel(source: string): string {
   return source
     .split('_')
@@ -531,14 +457,121 @@ function formatSourceLabel(source: string): string {
     .join(' ')
 }
 
-function TriageAuditPanel() {
-  const [events, setEvents] = React.useState<Array<any>>([])
+function normalizeTokenList(value: string): string[] {
+  return value
+    .split(/[\n,;|]+/)
+    .map((item) => cleanDisplayText(item).trim())
+    .filter(Boolean)
+}
 
-  React.useEffect(() => {
+function extractJobSections(description: string) {
+  const cleaned = cleanDisplayText(description)
+  const lines = normalizeTokenList(
+    cleaned
+      .replace(/Responsibilities?:/gi, '\nResponsibilities:\n')
+      .replace(/Requirements?:/gi, '\nRequirements:\n')
+      .replace(/Qualifications?:/gi, '\nQualifications:\n')
+      .replace(/What you'll do:?/gi, "\nResponsibilities:\n")
+      .replace(/What you will do:?/gi, "\nResponsibilities:\n")
+      .replace(/What we're looking for:?/gi, '\nRequirements:\n')
+      .replace(/What we are looking for:?/gi, '\nRequirements:\n'),
+  )
+
+  const responsibilities: string[] = []
+  const requirements: string[] = []
+  const overview: string[] = []
+  let currentSection: 'overview' | 'responsibilities' | 'requirements' = 'overview'
+
+  for (const line of lines) {
+    const normalized = line.toLowerCase()
+    if (normalized === 'responsibilities:' || normalized === 'responsibilities') {
+      currentSection = 'responsibilities'
+      continue
+    }
+    if (
+      normalized === 'requirements:' ||
+      normalized === 'requirements' ||
+      normalized === 'qualifications:' ||
+      normalized === 'qualifications'
+    ) {
+      currentSection = 'requirements'
+      continue
+    }
+
+    if (currentSection === 'responsibilities') {
+      responsibilities.push(line)
+    } else if (currentSection === 'requirements') {
+      requirements.push(line)
+    } else {
+      overview.push(line)
+    }
+  }
+
+  return {
+    overview: overview.slice(0, 3),
+    responsibilities: responsibilities.slice(0, 8),
+    requirements: requirements.slice(0, 8),
+  }
+}
+
+function extractSalary(description: string): string | null {
+  const salaryMatch =
+    description.match(/\$[\d,.]+\s*(?:-|to)\s*\$[\d,.]+(?:\s*(?:per year|\/year|yearly|annually))?/i) ??
+    description.match(/\$[\d,.]+k?\+?(?:\s*(?:per year|\/year|yearly|annually))?/i)
+  return salaryMatch ? cleanDisplayText(salaryMatch[0]) : null
+}
+
+function extractTechnologies(description: string, score: JobScore | null): string[] {
+  const technologyTerms = [
+    'Python',
+    'FastAPI',
+    'Node.js',
+    'TypeScript',
+    'JavaScript',
+    'React',
+    'PostgreSQL',
+    'MySQL',
+    'Docker',
+    'AWS',
+    'GCP',
+    'OpenAI',
+    'LangGraph',
+    'pgvector',
+    'Redis',
+    'Kubernetes',
+    'GitHub Actions',
+    'SQL',
+  ]
+  const combined = `${description} ${(score?.extracted_requirements.required_skills ?? []).join(' ')}`
+  return technologyTerms.filter((term) => combined.toLowerCase().includes(term.toLowerCase())).slice(0, 8)
+}
+
+function statusLabel(value: boolean, positive: string, negative: string) {
+  return value ? positive : negative
+}
+
+function TriageAuditPanel() {
+  const [events, setEvents] = useState<
+    Array<{
+      id: string
+      event_type: string
+      details?: Record<string, unknown> | null
+      created_at?: string | null
+    }>
+  >([])
+
+  useEffect(() => {
     let mounted = true
     void (async () => {
       try {
-        const data = await requestApi<any[]>('/agents/triage-audit')
+        const data = await requestApi<
+          Array<{
+            id: string
+            event_type: string
+            details?: Record<string, unknown> | null
+            created_at?: string | null
+          }>
+        >('/agents/triage-audit')
         if (mounted) setEvents(data.slice(0, 6))
       } catch {
         // ignore errors for this non-critical panel
@@ -550,20 +583,32 @@ function TriageAuditPanel() {
   }, [])
 
   if (!events.length) {
-    return <p className="text-xs text-slate-500 mt-1">No recent triage events.</p>
+    return <p className="mt-2 text-xs text-[color:var(--app-muted)]">No recent triage events.</p>
   }
 
   return (
     <div className="mt-2 space-y-2">
       {events.map((e) => (
-        <div key={e.id} className="rounded border border-slate-200 bg-white p-2 text-xs">
+        <div
+          key={e.id}
+          className="rounded-2xl border border-[color:var(--app-border)] bg-white/90 p-3 text-xs shadow-[0_10px_20px_rgba(23,23,23,0.03)]"
+        >
           <div className="flex items-center justify-between">
-            <span className="font-medium">{e.event_type}</span>
-            <span className="text-slate-500">{e.created_at ? new Date(e.created_at).toLocaleString() : ''}</span>
+            <span className="font-medium text-[color:var(--app-ink)]">{e.event_type}</span>
+            <span className="text-[color:var(--app-muted)]">{e.created_at ? new Date(e.created_at).toLocaleString() : ''}</span>
           </div>
-          <div className="mt-1 text-slate-600">
-            <div>{e.details?.subject ? truncate(e.details.subject, 80) : e.details?.reason ?? ''}</div>
-            <div className="mt-1 text-xxs text-slate-400">from: {e.details?.from ?? e.details?.from_header ?? 'unknown'}</div>
+          <div className="mt-1 text-[color:var(--app-muted)]">
+            <div>
+              {e.details?.subject
+                ? truncate(unknownToDisplayString(e.details.subject), 80)
+                : unknownToDisplayString(e.details?.reason) || ''}
+            </div>
+            <div className="mt-1 text-[10px] text-[color:var(--app-muted)]/80">
+              from:{' '}
+              {unknownToDisplayString(e.details?.from) ||
+                unknownToDisplayString(e.details?.from_header) ||
+                'unknown'}
+            </div>
           </div>
         </div>
       ))}
@@ -578,85 +623,20 @@ function gmailThreadUrl(email: Email): string | null {
   return `https://mail.google.com/mail/u/0/#inbox/${email.gmail_thread_id}`
 }
 
-function payloadText(value: unknown): string {
-  if (!value) {
-    return 'No raw source metadata stored yet.'
-  }
-  return JSON.stringify(value, null, 2)
+function isNoReplySender(fromEmail: string | null | undefined): boolean {
+  const sender = (fromEmail ?? '').toLowerCase()
+  return sender.includes('no-reply@') || sender.includes('noreply@')
 }
 
-function cleanDisplayName(name: string | null | undefined): string {
-  if (!name) {
-    return 'Profile not loaded'
+function jobGmailThreadUrl(job: Job | null): string | null {
+  if (!job?.source_trace) {
+    return null
   }
-
-  return cleanDisplayText(name)
-    .replace(/[´`']\s*([AEIOUaeiou])/g, (_, vowel: string) => {
-      const accents: Record<string, string> = {
-        a: 'á',
-        e: 'é',
-        i: 'í',
-        o: 'ó',
-        u: 'ú',
-        A: 'Á',
-        E: 'É',
-        I: 'Í',
-        O: 'Ó',
-        U: 'Ú',
-      }
-      return accents[vowel] ?? vowel
-    })
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function cleanDisplayText(text: string): string {
-  return text
-    .replace(/Ã¡/g, 'á')
-    .replace(/Ã©/g, 'é')
-    .replace(/Ã­/g, 'í')
-    .replace(/Ã³/g, 'ó')
-    .replace(/Ãº/g, 'ú')
-    .replace(/Ã±/g, 'ñ')
-    .replace(/Ã/g, 'Á')
-    .replace(/Ã‰/g, 'É')
-    .replace(/Ã/g, 'Í')
-    .replace(/Ã“/g, 'Ó')
-    .replace(/Ãš/g, 'Ú')
-    .replace(/Ã‘/g, 'Ñ')
-    .replace(/â/g, '—')
-    .replace(/â/g, '–')
-    .replace(/â/g, "'")
-    .replace(/â/g, '"')
-    .replace(/â/g, '"')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/\u00c2/g, '')
-    .replace(/\u0091/g, '')
-    .replace(/\u0098/g, '')
-    .replace(/\u0099/g, '')
-    .trim()
-}
-
-function getProfilePreference(
-  preferences: Record<string, unknown> | null | undefined,
-  key: string,
-): string | null {
-  const value = preferences?.[key]
-  if (typeof value === 'string' && value.trim()) {
-    return value.trim()
+  const rawThreadId = job.source_trace.gmail_thread_id
+  if (typeof rawThreadId !== 'string' || !rawThreadId.trim()) {
+    return null
   }
-  if (Array.isArray(value)) {
-    const tokens = value
-      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-      .map((item) => cleanDisplayText(item))
-    return tokens.length ? tokens.join(', ') : null
-  }
-  return null
-}
-
-function normalizeForMatch(value: string | null | undefined): string {
-  return cleanDisplayText(value ?? '').toLowerCase()
+  return `https://mail.google.com/mail/u/0/#inbox/${rawThreadId}`
 }
 
 function getStatusTone(status: string): string {
@@ -702,12 +682,36 @@ function getRecommendationTone(value: string): string {
   }
 }
 
+function getAvailabilityTone(status?: string | null): string {
+  switch ((status ?? '').toLowerCase()) {
+    case 'open':
+      return 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200'
+    case 'closed':
+      return 'bg-rose-100 text-rose-800 ring-1 ring-rose-200'
+    case 'login_required':
+      return 'bg-amber-100 text-amber-900 ring-1 ring-amber-200'
+    default:
+      return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
+  }
+}
+
+function formatAvailabilityLabel(status?: string | null): string {
+  return (status ?? '')
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
 function MetricCard(props: { label: string; value: string | number; note: string }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm shadow-slate-200/70">
-      <p className="text-xs font-semibold uppercase text-slate-500">{props.label}</p>
-      <p className="mt-3 text-3xl font-semibold text-slate-950">{props.value}</p>
-      <p className="mt-2 text-xs leading-5 text-slate-500">{props.note}</p>
+    <article className="crm-card px-4 py-3">
+      <p className="crm-label">
+        {props.label}
+      </p>
+      <p className="mt-2 truncate text-[1.35rem] font-semibold leading-7 text-[color:var(--app-ink)]">
+        {props.value}
+      </p>
+      <p className="mt-1 text-xs leading-5 text-[color:var(--app-muted)]">{props.note}</p>
     </article>
   )
 }
@@ -715,7 +719,7 @@ function MetricCard(props: { label: string; value: string | number; note: string
 function ResourceBanner(props: { title: string; state: ResourceState<unknown> }) {
   if (props.state.loading) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+      <div className="crm-subcard px-3 py-2 text-sm text-[color:var(--app-muted)]">
         Loading {props.title.toLowerCase()}...
       </div>
     )
@@ -723,15 +727,15 @@ function ResourceBanner(props: { title: string; state: ResourceState<unknown> })
 
   if (props.state.unavailable) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        {props.title} endpoint is currently unavailable. The dashboard stays usable, but this section needs the latest FastAPI server build.
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        {props.title} endpoint is currently unavailable. The workspace stays usable, but this section needs the latest FastAPI server build.
       </div>
     )
   }
 
   if (props.state.error) {
     return (
-      <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+      <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">
         {props.title} could not be loaded: {props.state.error}
       </div>
     )
@@ -742,23 +746,33 @@ function ResourceBanner(props: { title: string; state: ResourceState<unknown> })
 
 function Panel(props: { title: string; subtitle?: string; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60">
-      <div>
-        <h2 className="text-lg font-semibold text-slate-950">{props.title}</h2>
+    <section className="rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] p-4 shadow-[0_10px_32px_rgba(24,27,24,0.05)] sm:p-5">
+      <div className="border-b border-[color:var(--app-border)] pb-3">
+        <p className="crm-label">Workspace</p>
+        <h2 className="mt-1 text-lg font-semibold leading-6 text-[color:var(--app-ink)]">
+          {props.title}
+        </h2>
         {props.subtitle ? (
-          <p className="mt-1 text-sm text-slate-600">{props.subtitle}</p>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-[color:var(--app-muted)]">
+            {props.subtitle}
+          </p>
         ) : null}
       </div>
-      <div className="mt-4">{props.children}</div>
+      <div className="mt-5">{props.children}</div>
     </section>
   )
 }
 
 function EmptyState(props: { title: string; body: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
-      <p className="text-sm font-medium text-slate-900">{props.title}</p>
-      <p className="mt-1 text-sm text-slate-600">{props.body}</p>
+    <div className="rounded-lg border border-dashed border-[color:var(--app-border-strong)] bg-[color:var(--app-bg-soft)] p-4">
+      <p className="crm-label">Empty</p>
+      <p className="mt-2 text-base font-semibold text-[color:var(--app-ink)]">
+        {props.title}
+      </p>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--app-muted)]">
+        {props.body}
+      </p>
     </div>
   )
 }
@@ -773,17 +787,17 @@ function SectionButton(props: {
     <button
       type="button"
       onClick={props.onClick}
-      className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
+      className={`flex items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
         props.active
-          ? 'bg-slate-950 text-white shadow-sm'
-          : 'text-slate-600 hover:bg-white hover:text-slate-950 hover:shadow-sm'
+          ? 'bg-[color:var(--app-ink)] text-white'
+          : 'text-[color:var(--app-muted)] hover:bg-[color:var(--app-bg-soft)] hover:text-[color:var(--app-ink)]'
       }`}
     >
-      <span>{props.label}</span>
+      <span className="tracking-[0.01em]">{props.label}</span>
       {props.badge !== undefined ? (
         <span
-          className={`rounded-sm px-2 py-0.5 text-xs ${
-            props.active ? 'bg-white/15 text-white' : 'bg-slate-200 text-slate-700'
+          className={`rounded-md px-2 py-0.5 text-[0.68rem] ${
+            props.active ? 'bg-white/12 text-white' : 'bg-[color:var(--app-accent-soft)] text-[color:var(--app-accent)]'
           }`}
         >
           {props.badge}
@@ -803,18 +817,18 @@ function SetupStep(props: {
     props.status === 'done'
       ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
       : props.status === 'loading'
-        ? 'border-slate-200 bg-slate-50 text-slate-700'
-        : 'border-slate-200 bg-white text-slate-800'
+        ? 'border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] text-[color:var(--app-muted)]'
+        : 'border-[color:var(--app-border)] bg-[color:var(--app-surface-strong)] text-[color:var(--app-ink)]'
 
   return (
-    <article className={`rounded-xl border p-4 ${tone}`}>
+    <article className={`rounded-[1.3rem] border p-4 shadow-[0_14px_35px_rgba(23,23,23,0.04)] ${tone}`}>
       <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-xs font-semibold shadow-sm ring-1 ring-black/5">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-xs font-semibold shadow-sm ring-1 ring-black/5">
           {props.status === 'done' ? 'Ready' : props.index}
         </span>
         <div className="min-w-0">
-          <p className="text-sm font-semibold">{props.title}</p>
-          <p className="mt-1 truncate text-sm">{props.body}</p>
+          <p className="text-sm font-semibold tracking-[0.01em]">{props.title}</p>
+          <p className="mt-1 text-sm">{props.body}</p>
         </div>
       </div>
     </article>
@@ -828,13 +842,17 @@ function SetupHome(props: {
   operationMessage: string | null
   operationError: string | null
   gmailConnecting: boolean
+  gmailConfiguring: boolean
+  selectedGmailCredentialsFile: File | null
+  onSelectGmailCredentialsFile: (file: File | null) => void
+  onUploadGmailCredentials: () => void
   onConnectGmail: () => void
   onOpenSetup: () => void
   onEnterDashboard: () => void
 }) {
   const gmailReady = Boolean(props.gmailStatus.data?.authenticated)
   const gmailChecking = props.gmailStatus.loading || props.gmailStatus.data === null
-  const gmailConfigured = Boolean(props.gmailStatus.data?.credentials_file_exists)
+  const gmailConfigured = Boolean(props.gmailStatus.data?.oauth_configured)
   const profileReady = Boolean(props.profile.data)
   const documentsReady = props.documents.data.length > 0
   const cvReady = props.documents.data.some((document) => document.source_type === 'cv')
@@ -842,39 +860,40 @@ function SetupHome(props: {
     props.gmailStatus.loading || props.profile.loading || props.documents.loading
 
   return (
-    <div className="min-h-screen bg-[#eef2f7] px-4 py-6 text-slate-900 lg:px-8">
-      <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-6xl flex-col justify-center">
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/70">
-          <div className="grid min-h-[680px] lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="flex flex-col justify-between bg-slate-950 p-7 text-white lg:p-10">
+    <div className="min-h-screen px-4 py-6 text-[color:var(--app-ink)] lg:px-8">
+      <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-7xl flex-col justify-center">
+        <section className="overflow-hidden rounded-[2rem] border border-[color:var(--app-border)] bg-[color:var(--app-surface)] shadow-[0_30px_90px_rgba(23,23,23,0.08)] backdrop-blur-sm">
+          <div className="grid min-h-[720px] lg:grid-cols-[0.96fr_1.04fr]">
+            <div className="relative flex flex-col justify-between overflow-hidden bg-[#111111] p-7 text-white lg:p-10">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(15,118,110,0.24),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(180,83,9,0.18),transparent_28%)]" />
               <div>
-                <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-slate-200">
+                <div className="relative inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-stone-200">
                   CareerOps Agent
                 </div>
-                <h1 className="mt-8 max-w-xl text-4xl font-semibold leading-[1.04] lg:text-6xl">
-                  Job search command center
+                <h1 className="relative mt-8 max-w-xl font-serif text-4xl font-semibold leading-[0.98] lg:text-[4.3rem]">
+                  Sign in with Google to unlock your private hiring workspace.
                 </h1>
-                <p className="mt-5 max-w-md text-base leading-7 text-slate-300">
-                  Inbox, jobs, profile evidence, CVs, drafts, and next actions in one private workspace.
+                <p className="relative mt-5 max-w-md text-base leading-7 text-stone-300">
+                  CareerOps uses Google to bring in recruiter updates, job alerts, interviews, and application confirmations. Google sign-in is required before you can enter.
                 </p>
               </div>
 
-              <div className="mt-10">
+              <div className="relative mt-10">
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-xl border border-white/10 bg-white/10 p-4">
-                    <p className="text-xs text-slate-400">Google</p>
+                  <div className="rounded-[1.2rem] border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
+                    <p className="text-xs uppercase tracking-[0.18em] text-stone-400">Google</p>
                     <p className="mt-1 text-sm font-semibold">
                       {gmailReady ? 'Connected' : 'Required'}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/10 p-4">
-                    <p className="text-xs text-slate-400">CV</p>
-                    <p className="mt-1 text-sm font-semibold">{cvReady ? 'Loaded' : 'Needed'}</p>
+                  <div className="rounded-[1.2rem] border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
+                    <p className="text-xs uppercase tracking-[0.18em] text-stone-400">CV</p>
+                    <p className="mt-1 text-sm font-semibold">{cvReady ? 'Ready' : 'Next step'}</p>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-white/10 p-4">
-                    <p className="text-xs text-slate-400">Profile</p>
+                  <div className="rounded-[1.2rem] border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
+                    <p className="text-xs uppercase tracking-[0.18em] text-stone-400">Profile</p>
                     <p className="mt-1 text-sm font-semibold">
-                      {profileReady ? 'Built' : 'Pending'}
+                      {profileReady ? 'Ready' : 'Pending'}
                     </p>
                   </div>
                 </div>
@@ -884,7 +903,7 @@ function SetupHome(props: {
                     type="button"
                     onClick={props.onConnectGmail}
                     disabled={props.gmailConnecting || !gmailConfigured}
-                    className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-2xl bg-[color:var(--app-bg-soft)] px-5 py-3 text-sm font-semibold text-[color:var(--app-ink)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {props.gmailConnecting
                       ? 'Opening Google...'
@@ -898,31 +917,65 @@ function SetupHome(props: {
                     type="button"
                     onClick={props.onEnterDashboard}
                     disabled={!gmailReady}
-                    className="rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Open workspace
+                    Enter workspace
                   </button>
                 </div>
+                {!gmailChecking && !gmailConfigured && IS_LOCAL_API ? (
+                  <div className="mt-5 rounded-[1.3rem] border border-white/15 bg-white/5 p-4">
+                    <p className="text-sm font-semibold text-white">Load your Google OAuth JSON</p>
+                    <p className="mt-2 text-sm leading-6 text-stone-300">
+                      CareerOps can store the downloaded Google OAuth client locally, so you do not need to copy files by hand.
+                    </p>
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      onChange={(event) =>
+                        props.onSelectGmailCredentialsFile(event.target.files?.[0] ?? null)
+                      }
+                      className="mt-4 w-full rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white file:mr-3 file:rounded-xl file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[color:var(--app-ink)]"
+                    />
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={props.onUploadGmailCredentials}
+                        disabled={props.gmailConfiguring || !props.selectedGmailCredentialsFile}
+                        className="rounded-2xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {props.gmailConfiguring ? 'Saving OAuth JSON...' : 'Load OAuth JSON'}
+                      </button>
+                      <span className="text-xs text-stone-400">
+                        Expected path:{' '}
+                        {props.gmailStatus.data?.credentials_path ?? 'storage/secrets/gmail_credentials.json'}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
                 {!gmailChecking && !gmailConfigured ? (
-                  <p className="mt-4 text-sm text-rose-200">Google OAuth is not configured on the backend.</p>
+                  <p className="mt-4 text-sm text-rose-200">
+                    Google OAuth is not configured on the backend yet.
+                  </p>
                 ) : null}
               </div>
             </div>
 
-            <div className="flex flex-col justify-between p-6 lg:p-8">
+            <div className="flex flex-col justify-between bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(255,248,238,0.92))] p-6 lg:p-8">
               <div>
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-semibold text-slate-500">Access</p>
-                    <h2 className="mt-2 text-2xl font-semibold text-slate-950">
+                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                      Access
+                    </p>
+                    <h2 className="mt-2 font-serif text-3xl font-semibold text-[color:var(--app-ink)]">
                       {gmailReady ? 'Workspace ready' : 'Google sign-in required'}
                     </h2>
                   </div>
                   <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                    className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
                       gmailReady
                         ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-100 text-slate-600'
+                        : 'bg-stone-200 text-stone-700'
                     }`}
                   >
                     {gmailReady ? 'Unlocked' : 'Locked'}
@@ -946,23 +999,23 @@ function SetupHome(props: {
                   />
                   <SetupStep
                     index={2}
-                    title="Base CV"
+                    title="Resume"
                     body={
                       cvReady
                         ? 'CV source is available'
                         : documentsReady
-                          ? 'Upload or mark one document as Base CV'
-                          : 'Upload your master CV'
+                          ? 'Choose one file to use as your main resume'
+                          : 'Upload your main resume'
                     }
                     status={props.documents.loading ? 'loading' : cvReady ? 'done' : 'pending'}
                   />
                   <SetupStep
                     index={3}
-                    title="Candidate profile"
+                    title="Profile"
                     body={
                       profileReady
                         ? `${cleanDisplayName(props.profile.data?.display_name)} is ready`
-                        : 'Build from the Base CV'
+                        : 'Create it from your resume'
                     }
                     status={props.profile.loading ? 'loading' : profileReady ? 'done' : 'pending'}
                   />
@@ -975,27 +1028,27 @@ function SetupHome(props: {
                     type="button"
                     onClick={props.onOpenSetup}
                     disabled={!gmailReady}
-                    className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-2xl bg-[color:var(--app-ink)] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Set up profile
+                    Continue to resume setup
                   </button>
                 <button
                   type="button"
                   onClick={props.onEnterDashboard}
                   disabled={!gmailReady}
-                  className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-5 py-3 text-sm font-semibold text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Open workspace
+                  Enter workspace
                 </button>
               </div>
 
               {props.operationMessage ? (
-                <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-900">
                   {props.operationMessage}
                 </div>
               ) : null}
               {props.operationError ? (
-                <div className="mt-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+                <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm text-rose-900">
                   {props.operationError}
                 </div>
               ) : null}
@@ -1010,11 +1063,21 @@ function SetupHome(props: {
 
 function App() {
   const autoInboxRefreshStarted = useRef(false)
+  const autoSyncedApplicationIds = useRef<Set<string>>(new Set())
+  const autoSyncInFlightApplicationIds = useRef<Set<string>>(new Set())
+  const documentInputRef = useRef<HTMLInputElement | null>(null)
   const [activeSection, setActiveSection] = useState<AppSection>('overview')
-  const [dashboardUnlocked, setDashboardUnlocked] = useState(false)
+  const [guidedAction, setGuidedAction] = useState<GuidedAction | null>(null)
   const [jobSearch, setJobSearch] = useState('')
+  const [jobDescriptionDrafts, setJobDescriptionDrafts] = useState<Record<string, string>>({})
+  const [jobOfficialUrlDrafts, setJobOfficialUrlDrafts] = useState<Record<string, string>>({})
+  const [applicationJobDescriptionDrafts, setApplicationJobDescriptionDrafts] = useState<Record<string, string>>({})
+  const [applicationJobReplyInfo, setApplicationJobReplyInfo] = useState('')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null)
+  const [actionFilter, setActionFilter] = useState<ActionFilter>('all')
+  const [pipelineSearch, setPipelineSearch] = useState('')
+  const [pipelineFilter, setPipelineFilter] = useState<PipelineFilter>('all')
   const [applicationMutating, setApplicationMutating] = useState(false)
   const [actionMutating, setActionMutating] = useState<ActionMutationState>({})
   const [emailMutating, setEmailMutating] = useState<EmailMutationState>({})
@@ -1025,6 +1088,9 @@ function App() {
   const [operationError, setOperationError] = useState<string | null>(null)
   const [documentSourceType, setDocumentSourceType] = useState('cv')
   const [selectedDocument, setSelectedDocument] = useState<File | null>(null)
+  const [selectedGmailCredentialsFile, setSelectedGmailCredentialsFile] = useState<File | null>(
+    null,
+  )
   const [localDocumentPath, setLocalDocumentPath] = useState(
     'C:\\Users\\Jdela\\OneDrive - University of South Florida\\Escritorio\\resume\\resume\\pdf\\jose_david_gomez_resume_master_full_en.pdf',
   )
@@ -1058,6 +1124,9 @@ function App() {
   const [selectedJobDrafts, setSelectedJobDrafts] = useState<ResourceState<MessageDraft[]>>(
     createInitialResource([]),
   )
+  const [selectedJobResolutionAttempts, setSelectedJobResolutionAttempts] = useState<
+    ResourceState<JobDescriptionResolutionAttempt[]>
+  >(createInitialResource([]))
   const [selectedJobSemanticMatches, setSelectedJobSemanticMatches] = useState<
     ResourceState<SemanticMatch[]>
   >(createInitialResource([]))
@@ -1067,6 +1136,22 @@ function App() {
   const [selectedApplicationActions, setSelectedApplicationActions] = useState<
     ResourceState<Action[]>
   >(createInitialResource([]))
+  const [selectedPortalCredentials, setSelectedPortalCredentials] = useState<
+    ResourceState<PortalCredential[]>
+  >(createInitialResource([]))
+  const [selectedStatusChecks, setSelectedStatusChecks] = useState<
+    ResourceState<ApplicationStatusCheckEvent[]>
+  >(createInitialResource([]))
+  const [selectedNoReplyDraft, setSelectedNoReplyDraft] = useState('')
+  const [portalCredentialForm, setPortalCredentialForm] = useState<PortalCredentialForm>({
+    portal_name: '',
+    portal_url: '',
+    username: '',
+    password: '',
+    mfa_enabled: false,
+    daily_check_allowed: false,
+  })
+  const [gmailOAuthPending, setGmailOAuthPending] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -1086,13 +1171,16 @@ function App() {
 
   useEffect(() => {
     if (gmailStatusState.data?.authenticated) {
+      setGmailOAuthPending(false)
       return
     }
     const timer = window.setInterval(() => {
-      void loadResource<GmailStatus | null>('/gmail/status', setGmailStatusState, null)
-    }, 5000)
+      void loadResource<GmailStatus | null>('/gmail/status', setGmailStatusState, null, {
+        preserveDataWhileLoading: true,
+      })
+    }, gmailOAuthPending ? 2000 : 5000)
     return () => window.clearInterval(timer)
-  }, [gmailStatusState.data?.authenticated])
+  }, [gmailOAuthPending, gmailStatusState.data?.authenticated])
 
   const effectiveSelectedJobId = selectedJobId ?? jobs.data[0]?.id ?? null
   const effectiveSelectedApplicationId =
@@ -1107,21 +1195,25 @@ function App() {
       `/jobs/${effectiveSelectedJobId}/scores`,
       setSelectedJobScores,
       [],
+      { preserveDataWhileLoading: true },
     )
     void loadResource<CVVersion[]>(
       `/jobs/${effectiveSelectedJobId}/cv-tailoring-plans`,
       setSelectedJobCvVersions,
       [],
+      { preserveDataWhileLoading: true },
     )
     void loadResource<MessageDraft[]>(
       `/jobs/${effectiveSelectedJobId}/message-drafts`,
       setSelectedJobDrafts,
       [],
+      { preserveDataWhileLoading: true },
     )
     void loadResource<SemanticMatch[]>(
       `/jobs/${effectiveSelectedJobId}/semantic-matches`,
       setSelectedJobSemanticMatches,
       [],
+      { preserveDataWhileLoading: true },
     )
   }, [effectiveSelectedJobId])
 
@@ -1134,21 +1226,29 @@ function App() {
       `/applications/${effectiveSelectedApplicationId}`,
       setSelectedApplicationTracker,
       null,
+      { preserveDataWhileLoading: true },
     )
     void loadResource<Action[]>(
       `/applications/${effectiveSelectedApplicationId}/actions`,
       setSelectedApplicationActions,
       [],
+      { preserveDataWhileLoading: true },
+    )
+    void loadResource<PortalCredential[]>(
+      `/applications/${effectiveSelectedApplicationId}/portal-credentials`,
+      setSelectedPortalCredentials,
+      [],
+      { preserveDataWhileLoading: true },
+    )
+    void loadResource<ApplicationStatusCheckEvent[]>(
+      `/applications/${effectiveSelectedApplicationId}/status-checks`,
+      setSelectedStatusChecks,
+      [],
+      { preserveDataWhileLoading: true },
     )
   }, [effectiveSelectedApplicationId])
 
   const jobsById = useMemo(() => new Map(jobs.data.map((job) => [job.id, job])), [jobs.data])
-
-  const latestSummary = useMemo(() => {
-    return [...summaries.data].sort((left, right) =>
-      right.summary_date.localeCompare(left.summary_date),
-    )[0]
-  }, [summaries.data])
 
   const filteredJobs = useMemo(() => {
     const query = jobSearch.trim().toLowerCase()
@@ -1176,6 +1276,14 @@ function App() {
   const selectedJob = useMemo(
     () => jobs.data.find((job) => job.id === effectiveSelectedJobId) ?? null,
     [effectiveSelectedJobId, jobs.data],
+  )
+  const selectedJobDescriptionInput = selectedJob
+    ? (jobDescriptionDrafts[selectedJob.id] ?? selectedJob.resolved_description ?? selectedJob.description)
+    : ''
+  const selectedJobOfficialUrlInput = selectedJob ? (jobOfficialUrlDrafts[selectedJob.id] ?? '') : ''
+  const selectedJobDescriptionIncomplete = isJobDescriptionIncomplete(selectedJob)
+  const selectedJobReviewCandidates = selectedJobResolutionAttempts.data.filter(
+    (attempt) => attempt.status === 'needs_manual_review' && attempt.metadata?.candidate_description,
   )
   const latestCvDocument = useMemo(() => {
     return [...documents.data]
@@ -1223,7 +1331,194 @@ function App() {
   const approvedDraftCount = selectedJobDrafts.data.filter(
     (draft) => draft.status === 'approved',
   ).length
-  const workspaceUnlocked = dashboardUnlocked || Boolean(gmailStatusState.data?.authenticated)
+  const workspaceUnlocked = Boolean(gmailStatusState.data?.authenticated)
+  const applicationsByJobId = useMemo(
+    () => new Map(applications.data.map((application) => [application.job_id, application])),
+    [applications.data],
+  )
+  const selectedApplication = useMemo(
+    () =>
+      effectiveSelectedApplicationId
+        ? applications.data.find((application) => application.id === effectiveSelectedApplicationId) ?? null
+        : null,
+    [applications.data, effectiveSelectedApplicationId],
+  )
+  const selectedApplicationJob = useMemo(
+    () => (selectedApplication ? jobsById.get(selectedApplication.job_id) ?? null : null),
+    [jobsById, selectedApplication],
+  )
+  const applicationJobDescriptionInput = selectedApplication
+    ? (applicationJobDescriptionDrafts[selectedApplication.id] ?? selectedApplicationJob?.description ?? '')
+    : ''
+  const selectedApplicationSourceEmail = useMemo(() => {
+    if (!effectiveSelectedApplicationId) {
+      return null
+    }
+    return (
+      emails.data
+        .filter((email) => email.application_id === effectiveSelectedApplicationId)
+        .sort((left, right) => {
+          const leftTime = left.received_at ? Date.parse(left.received_at) : 0
+          const rightTime = right.received_at ? Date.parse(right.received_at) : 0
+          return rightTime - leftTime
+        })[0] ?? null
+    )
+  }, [emails.data, effectiveSelectedApplicationId])
+
+  useEffect(() => {
+    setPortalCredentialForm({
+      portal_name: selectedApplicationJob?.company?.name ?? '',
+      portal_url: selectedApplicationJob?.source_url ?? '',
+      username: '',
+      password: '',
+      mfa_enabled: false,
+      daily_check_allowed: false,
+    })
+  }, [selectedApplicationJob?.company?.name, selectedApplicationJob?.source_url])
+
+  const actionsByApplicationId = useMemo(() => {
+    const map = new Map<string, Action[]>()
+    for (const action of actions.data) {
+      const list = map.get(action.application_id) ?? []
+      list.push(action)
+      map.set(action.application_id, list)
+    }
+    return map
+  }, [actions.data])
+  const applicationRows = useMemo(() => {
+    const waitingStatuses = new Set(['found', 'reviewed', 'cv generated', 'applied', 'recruiter replied'])
+    return applications.data
+      .map((application) => {
+        const job = jobsById.get(application.job_id)
+        const companyLabel = job?.company?.name ?? application.company_name ?? 'Unknown company'
+        const titleLabel = job?.title ?? application.job_title ?? 'Unknown role'
+        const linkedActions = actionsByApplicationId.get(application.id) ?? []
+        const openActions = linkedActions.filter((action) => action.status === 'open')
+        const hasNoActions = openActions.length === 0
+        const hasActionable = openActions.some((action) => {
+          if (action.action_type !== 'respond_to_recruiter' && action.action_type !== 'send_follow_up') return true
+          if (!action.email_id) return false
+          const linkedEmail = emails.data.find((email) => email.id === action.email_id)
+          return !isNoReplySender(linkedEmail?.from_email)
+        })
+        const hasNoReply = openActions.some((action) => {
+          if (action.action_type !== 'respond_to_recruiter' && action.action_type !== 'send_follow_up') return false
+          if (!action.email_id) return true
+          const linkedEmail = emails.data.find((email) => email.id === action.email_id)
+          return isNoReplySender(linkedEmail?.from_email)
+        })
+        const statusLower = application.status.toLowerCase()
+        const isRejected = statusLower === 'rejected'
+        const isActive = waitingStatuses.has(statusLower)
+        const searchable = `${companyLabel} ${titleLabel} ${application.status}`.toLowerCase()
+        return {
+          application,
+          companyLabel,
+          titleLabel,
+          hasNoActions,
+          hasActionable,
+          hasNoReply,
+          isRejected,
+          isActive,
+          searchable,
+        }
+      })
+      .filter((row) => {
+        const query = pipelineSearch.trim().toLowerCase()
+        if (query && !row.searchable.includes(query)) return false
+        if (pipelineFilter === 'active') return row.isActive
+        if (pipelineFilter === 'rejected') return row.isRejected
+        if (pipelineFilter === 'actionable') return row.hasActionable
+        if (pipelineFilter === 'no_action') return row.hasNoActions
+        return true
+      })
+  }, [applications.data, jobsById, actionsByApplicationId, emails.data, pipelineSearch, pipelineFilter])
+  const selectedApplicationStatus = (selectedApplicationTracker.data?.status ?? '').toLowerCase()
+  const waitingStatuses = new Set(['found', 'reviewed', 'cv generated', 'applied', 'recruiter replied'])
+  const appIsRejected = selectedApplicationStatus === 'rejected'
+  const appIsWaiting = waitingStatuses.has(selectedApplicationStatus)
+  const actionRows = useMemo(() => {
+    const rows = selectedApplicationActions.data.map((action) => {
+      const linkedEmail = action.email_id ? emails.data.find((email) => email.id === action.email_id) : null
+      const blockedReply = Boolean(
+        action.status === 'open' &&
+          (action.action_type === 'respond_to_recruiter' || action.action_type === 'send_follow_up') &&
+          (!action.email_id || isNoReplySender(linkedEmail?.from_email)),
+      )
+      const actionable = action.status === 'open' && !blockedReply
+      return { action, blockedReply, actionable }
+    })
+    if (actionFilter === 'possible') return rows.filter((row) => row.actionable)
+    if (actionFilter === 'blocked') return rows.filter((row) => row.blockedReply)
+    if (actionFilter === 'none') return []
+    return rows
+  }, [selectedApplicationActions.data, emails.data, actionFilter])
+  const selectedJobApplication = effectiveSelectedJobId
+    ? applicationsByJobId.get(effectiveSelectedJobId) ?? null
+    : null
+  const selectedApplicationRow = useMemo(
+    () => applicationRows.find((row) => row.application.id === effectiveSelectedApplicationId) ?? null,
+    [applicationRows, effectiveSelectedApplicationId],
+  )
+  const profileCompletion = [
+    Boolean(gmailStatusState.data?.authenticated),
+    Boolean(latestCvDocument),
+    Boolean(profile.data),
+    Boolean(profile.data?.skills.length),
+  ]
+  const profileCompletionPercent = Math.round(
+    (profileCompletion.filter(Boolean).length / profileCompletion.length) * 100,
+  )
+  const featuredJobs = jobs.data.slice(0, 4)
+  const activeApplications = applications.data.slice(0, 5)
+  const homeQuickActions = [
+    {
+      label: statusLabel(Boolean(latestCvDocument), 'Resume ready', 'Add your resume'),
+      note: latestCvDocument
+        ? 'Your latest resume is available for profile updates.'
+        : 'Start by adding a base resume.',
+      cta: latestCvDocument ? 'Open resume setup' : 'Choose a resume file',
+      action: () => {
+        setGuidedAction('resume-upload')
+        setActiveSection('setup')
+      },
+    },
+    {
+      label: profile.data ? 'Profile looks ready' : 'Build your profile',
+      note: profile.data
+        ? 'Skills and experience are already available for matching.'
+        : 'Create your profile from your stored resume.',
+      cta: profile.data ? 'Review profile' : 'Open profile builder',
+      action: () => {
+        setGuidedAction('profile-build')
+        setActiveSection(profile.data ? 'profile' : 'setup')
+      },
+    },
+    {
+      label: jobs.data.length ? 'Review job matches' : 'Find new jobs',
+      note: jobs.data.length
+        ? 'Open the strongest active opportunities.'
+        : 'Run job search to populate your workspace.',
+      cta: jobs.data.length ? 'Open job review' : 'Open job search tools',
+      action: () => {
+        if (featuredJobs.length) {
+          setSelectedJobId(featuredJobs[0].id)
+          setGuidedAction('job-review')
+          setActiveSection('jobs')
+          return
+        }
+        setGuidedAction('job-discovery')
+        setActiveSection('setup')
+      },
+    },
+  ]
+  const selectedJobSections = selectedJob
+    ? extractJobSections(selectedJob.description)
+    : { overview: [], responsibilities: [], requirements: [] }
+  const selectedJobSalary = selectedJob ? extractSalary(selectedJob.description) : null
+  const selectedJobTechnologies = selectedJob
+    ? extractTechnologies(selectedJob.description, selectedJobScore)
+    : []
 
   const getEmailApplicationOptions = (email: Email) => {
     const companyNeedle = normalizeForMatch(email.company_name ?? email.from_name)
@@ -1307,7 +1602,220 @@ function App() {
         [],
       ),
       loadResource<MessageDraft[]>(`/jobs/${jobId}/message-drafts`, setSelectedJobDrafts, []),
+      loadResource<JobDescriptionResolutionAttempt[]>(
+        `/jobs/${jobId}/resolution-attempts`,
+        setSelectedJobResolutionAttempts,
+        [],
+      ),
     ])
+  }
+
+  async function handleUpdateSelectedJobDescription() {
+    const description = selectedJobDescriptionInput.trim()
+    if (!effectiveSelectedJobId) {
+      setOperationError('Select a job before saving its description.')
+      return
+    }
+    if (description.length < 20) {
+      setOperationError('Paste the job description for the selected job before saving it.')
+      return
+    }
+
+    await runOperation('selected-job-description', async () => {
+      const result = await requestApi<ManualJobDescriptionResponse>(
+        `/jobs/${effectiveSelectedJobId}/manual-description`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            description,
+          }),
+        },
+      )
+      setSelectedJobId(result.job.id)
+      setJobDescriptionDrafts((current) => {
+        const next = { ...current }
+        delete next[result.job.id]
+        return next
+      })
+      await Promise.all([
+        loadResource<Job[]>('/jobs', setJobs, []),
+        loadResource<Application[]>('/applications', setApplications, []),
+        loadResource<Action[]>('/actions', setActions, []),
+      ])
+      await refreshSelectedJobArtifacts(result.job.id)
+      return `Saved the full job description for ${result.job.title}.`
+    })
+  }
+
+  async function handleResolveSelectedJobDescription() {
+    if (!effectiveSelectedJobId) {
+      return
+    }
+
+    await runOperation('resolve-job-description', async () => {
+      const result = await requestApi<JobDescriptionResolveResponse>(
+        `/jobs/${effectiveSelectedJobId}/resolve-description`,
+        {
+          method: 'POST',
+        },
+      )
+      await Promise.all([
+        loadResource<Job[]>('/jobs', setJobs, []),
+        loadResource<JobDescriptionResolutionAttempt[]>(
+          `/jobs/${effectiveSelectedJobId}/resolution-attempts`,
+          setSelectedJobResolutionAttempts,
+          [],
+        ),
+      ])
+      await refreshSelectedJobArtifacts(effectiveSelectedJobId)
+      return result.status === 'success'
+        ? `Resolved description from ${result.description_source ?? 'ATS'} with ${Math.round((result.confidence ?? 0) * 100)}% confidence.`
+        : result.notes
+    })
+  }
+
+  async function handleResolveSelectedJobManualUrl() {
+    const url = selectedJobOfficialUrlInput.trim()
+    if (!effectiveSelectedJobId || !url) {
+      setOperationError('Add an official public job URL before resolving.')
+      return
+    }
+
+    await runOperation('manual-job-url', async () => {
+      const result = await requestApi<ManualJobDescriptionResponse>(
+        `/jobs/${effectiveSelectedJobId}/manual-url`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ url }),
+        },
+      )
+      setJobOfficialUrlDrafts((current) => {
+        const next = { ...current }
+        delete next[result.job.id]
+        return next
+      })
+      await loadResource<Job[]>('/jobs', setJobs, [])
+      await refreshSelectedJobArtifacts(result.job.id)
+      return `Resolved description from official URL with ${Math.round((result.job.resolution_confidence ?? 0) * 100)}% confidence.`
+    })
+  }
+
+  async function handleAcceptResolutionCandidate(attemptId: string) {
+    if (!effectiveSelectedJobId) return
+    await runOperation(`accept-candidate-${attemptId}`, async () => {
+      const result = await requestApi<ManualJobDescriptionResponse>(
+        `/jobs/${effectiveSelectedJobId}/resolution-attempts/${attemptId}/accept`,
+        { method: 'POST' },
+      )
+      await loadResource<Job[]>('/jobs', setJobs, [])
+      await refreshSelectedJobArtifacts(result.job.id)
+      return `Accepted candidate description for ${result.job.title}.`
+    })
+  }
+
+  async function handleRejectResolutionCandidate(attemptId: string) {
+    if (!effectiveSelectedJobId) return
+    await runOperation(`reject-candidate-${attemptId}`, async () => {
+      await requestApi<JobDescriptionResolutionAttempt>(
+        `/jobs/${effectiveSelectedJobId}/resolution-attempts/${attemptId}/reject`,
+        { method: 'POST' },
+      )
+      await refreshSelectedJobArtifacts(effectiveSelectedJobId)
+      return 'Rejected candidate description.'
+    })
+  }
+
+  async function handleUpdateApplicationJobDescription() {
+    const description = applicationJobDescriptionInput.trim()
+    const applicationJobId = selectedApplication?.job_id ?? selectedApplicationJob?.id
+    if (!applicationJobId) {
+      setOperationError('Select an application with a linked job before saving a description.')
+      return
+    }
+    if (description.length < 20) {
+      setOperationError('Paste the job description for this application before saving it.')
+      return
+    }
+
+    await runOperation('application-job-description', async () => {
+      const result = await requestApi<ManualJobDescriptionResponse>(
+        `/jobs/${applicationJobId}/manual-description`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            description,
+          }),
+        },
+      )
+      setSelectedJobId(result.job.id)
+      setApplicationJobReplyInfo('')
+      if (selectedApplication) {
+        setApplicationJobDescriptionDrafts((current) => {
+          const next = { ...current }
+          delete next[selectedApplication.id]
+          return next
+        })
+      }
+      await Promise.all([
+        loadResource<Job[]>('/jobs', setJobs, []),
+        loadResource<Application[]>('/applications', setApplications, []),
+        effectiveSelectedApplicationId
+          ? loadResource<ApplicationTracker | null>(
+              `/applications/${effectiveSelectedApplicationId}`,
+              setSelectedApplicationTracker,
+              null,
+            )
+          : Promise.resolve(),
+      ])
+      await refreshSelectedJobArtifacts(result.job.id)
+      return `Saved the full job description under this application for ${result.job.title}.`
+    })
+  }
+
+  async function handleDeleteSelectedJob() {
+    if (!effectiveSelectedJobId || !selectedJob) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Remove "${selectedJob.title}" at ${selectedJob.company?.name ?? 'Unknown company'} from your workspace?`,
+    )
+    if (!confirmed) {
+      return
+    }
+
+    const nextJobId = filteredJobs.find((job) => job.id !== effectiveSelectedJobId)?.id ?? null
+
+    await runOperation('delete-job', async () => {
+      const result = await requestApi<DeleteJobResponse>(`/jobs/${effectiveSelectedJobId}`, {
+        method: 'DELETE',
+      })
+      setSelectedJobId(nextJobId)
+      if (!nextJobId) {
+        setGuidedAction('job-discovery')
+      }
+      await Promise.all([
+        loadResource<Job[]>('/jobs', setJobs, []),
+        loadResource<Application[]>('/applications', setApplications, []),
+        loadResource<Action[]>('/actions', setActions, []),
+        loadResource<Email[]>('/emails', setEmails, []),
+      ])
+      return result.message
+    })
+  }
+
+  async function handleCheckSelectedJobAvailability() {
+    if (!effectiveSelectedJobId) {
+      return
+    }
+
+    await runOperation('availability-check', async () => {
+      const updatedJob = await requestApi<Job>(`/jobs/${effectiveSelectedJobId}/availability-check`, {
+        method: 'POST',
+      })
+      await loadResource<Job[]>('/jobs', setJobs, [])
+      return `Apply link checked for ${updatedJob.title}. Status: ${formatAvailabilityLabel(updatedJob.availability_status)}.`
+    })
   }
 
   async function handleUploadDocument() {
@@ -1336,7 +1844,7 @@ function App() {
   async function handleExtractProfile() {
     await runOperation('extract-profile', async () => {
       if (!latestCvDocument) {
-        throw new Error('Upload your master resume as source type "Base CV" before building the profile.')
+        throw new Error('Add your main resume before building the profile.')
       }
       const extractedProfile = await requestApi<CandidateProfile>('/agents/profile/run', {
         method: 'POST',
@@ -1376,33 +1884,42 @@ function App() {
     })
   }, [runOperation])
 
-  async function handleRunGmailAuth() {
-    await runOperation('gmail-auth', async () => {
-      const status = await requestApi<GmailStatus>('/gmail/auth', {
+  async function handleUploadGmailCredentials() {
+    if (!selectedGmailCredentialsFile) {
+      setOperationError('Choose the Google OAuth JSON file you downloaded from Google Cloud first.')
+      return
+    }
+
+    await runOperation('gmail-config-upload', async () => {
+      const formData = new FormData()
+      formData.append('file', selectedGmailCredentialsFile)
+      const status = await requestApi<GmailStatus>('/gmail/config/upload', {
         method: 'POST',
+        body: formData,
       })
+      setSelectedGmailCredentialsFile(null)
       await loadResource<GmailStatus | null>('/gmail/status', setGmailStatusState, null)
-      return status.authenticated
-        ? 'Google connected.'
-        : 'Gmail OAuth finished, but the token was not detected yet. Refresh status and try again.'
+      return status.oauth_configured
+        ? `Google OAuth JSON saved to ${status.credentials_path}. Continue with Google to finish sign-in.`
+        : 'The OAuth file was uploaded, but the backend still does not consider it valid.'
     })
   }
 
   async function handleStartGmailWebOAuth() {
     await runOperation('gmail-web-oauth', async () => {
       const result = await requestApi<GmailOAuthStart>('/gmail/oauth/start')
-      window.location.href = result.authorization_url
+      setGmailOAuthPending(true)
+      window.open(result.authorization_url, '_blank', 'noopener,noreferrer')
       return `Opening Google sign-in: ${result.redirect_uri}`
     })
   }
 
   function enterDashboard(section: AppSection = 'overview') {
     if (!gmailStatusState.data?.authenticated) {
-      setOperationError('Sign in with Google before opening the CareerOps workspace.')
+      setOperationError('Sign in with Google before opening CareerOps.')
       return
     }
     setActiveSection(section)
-    setDashboardUnlocked(true)
     window.history.replaceState(null, '', window.location.pathname)
   }
 
@@ -1637,19 +2154,69 @@ function App() {
 
   async function refreshApplicationViews(applicationId: string) {
     await Promise.all([
-      loadResource<Application[]>('/applications', setApplications, []),
-      loadResource<Action[]>('/actions', setActions, []),
+      loadResource<Application[]>('/applications', setApplications, [], {
+        preserveDataWhileLoading: true,
+      }),
+      loadResource<Action[]>('/actions', setActions, [], {
+        preserveDataWhileLoading: true,
+      }),
       loadResource<ApplicationTracker | null>(
         `/applications/${applicationId}`,
         setSelectedApplicationTracker,
         null,
+        { preserveDataWhileLoading: true },
       ),
       loadResource<Action[]>(
         `/applications/${applicationId}/actions`,
         setSelectedApplicationActions,
         [],
+        { preserveDataWhileLoading: true },
+      ),
+      loadResource<PortalCredential[]>(
+        `/applications/${applicationId}/portal-credentials`,
+        setSelectedPortalCredentials,
+        [],
+        { preserveDataWhileLoading: true },
+      ),
+      loadResource<ApplicationStatusCheckEvent[]>(
+        `/applications/${applicationId}/status-checks`,
+        setSelectedStatusChecks,
+        [],
+        { preserveDataWhileLoading: true },
       ),
     ])
+  }
+
+  async function handleDeleteSelectedApplication() {
+    if (!effectiveSelectedApplicationId || !selectedApplicationTracker.data) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Remove this application from ${selectedApplicationTracker.data.company_name ?? 'Unknown company'}?`,
+    )
+    if (!confirmed) {
+      return
+    }
+
+    const nextApplicationId =
+      applicationRows.find((row) => row.application.id !== effectiveSelectedApplicationId)?.application.id ?? null
+
+    await runOperation('delete-application', async () => {
+      const result = await requestApi<DeleteApplicationResponse>(
+        `/applications/${effectiveSelectedApplicationId}`,
+        {
+          method: 'DELETE',
+        },
+      )
+      setSelectedApplicationId(nextApplicationId)
+      await Promise.all([
+        loadResource<Application[]>('/applications', setApplications, []),
+        loadResource<Action[]>('/actions', setActions, []),
+        loadResource<Email[]>('/emails', setEmails, []),
+      ])
+      return result.message
+    })
   }
 
   async function handleMarkApplied() {
@@ -1687,6 +2254,168 @@ function App() {
       await refreshApplicationViews(effectiveSelectedApplicationId)
     } finally {
       setApplicationMutating(false)
+    }
+  }
+
+  async function handleSavePortalCredential() {
+    if (!effectiveSelectedApplicationId) {
+      return
+    }
+    if (!portalCredentialForm.portal_name.trim() || !portalCredentialForm.portal_url.trim()) {
+      setOperationError('Add the portal name and URL before saving credentials.')
+      return
+    }
+    if (!portalCredentialForm.username.trim() || !portalCredentialForm.password) {
+      setOperationError('Add the portal username/email and password before saving credentials.')
+      return
+    }
+
+    await runOperation('portal-credential-save', async () => {
+      await requestApi<PortalCredential>(
+        `/applications/${effectiveSelectedApplicationId}/portal-credentials`,
+        {
+          method: 'POST',
+          body: JSON.stringify(portalCredentialForm),
+        },
+      )
+      await loadResource<PortalCredential[]>(
+        `/applications/${effectiveSelectedApplicationId}/portal-credentials`,
+        setSelectedPortalCredentials,
+        [],
+        { preserveDataWhileLoading: true },
+      )
+      setPortalCredentialForm((current) => ({
+        ...current,
+        username: '',
+        password: '',
+        daily_check_allowed: false,
+      }))
+      return 'Portal credentials saved securely. Passwords are not returned to the app UI.'
+    })
+  }
+
+  async function handleDeleteDocument(document: DocumentRecord) {
+    await runOperation(`delete-document-${document.id}`, async () => {
+      await requestApi(`/documents/${document.id}`, { method: 'DELETE' })
+      await Promise.all([
+        loadResource<DocumentRecord[]>('/documents', setDocuments, []),
+        loadResource<CandidateProfile | null>('/profile', setProfile, null),
+      ])
+      return `Deleted ${document.original_filename}. You can rebuild the profile from another resume.`
+    })
+  }
+
+  async function handleDeletePortalCredential(credentialId: string) {
+    if (!effectiveSelectedApplicationId) {
+      return
+    }
+    await runOperation(`portal-credential-delete-${credentialId}`, async () => {
+      await requestApi(`/portal-credentials/${credentialId}`, { method: 'DELETE' })
+      await loadResource<PortalCredential[]>(
+        `/applications/${effectiveSelectedApplicationId}/portal-credentials`,
+        setSelectedPortalCredentials,
+        [],
+        { preserveDataWhileLoading: true },
+      )
+      return 'Portal credential deleted.'
+    })
+  }
+
+  async function handleRunPortalStatusCheck() {
+    if (!effectiveSelectedApplicationId) {
+      return
+    }
+    await runOperation('portal-status-check', async () => {
+      const event = await requestApi<ApplicationStatusCheckEvent>(
+        `/applications/${effectiveSelectedApplicationId}/status-checks/run`,
+        { method: 'POST' },
+      )
+      await refreshApplicationViews(effectiveSelectedApplicationId)
+      return `Portal status checked: ${event.new_status} (${event.confidence}).`
+    })
+  }
+
+  async function handleGeneratePortalFollowUpDraft() {
+    if (!effectiveSelectedApplicationId) {
+      return
+    }
+    await runOperation('portal-follow-up-draft', async () => {
+      const draft = await requestApi<MessageDraft>(
+        `/applications/${effectiveSelectedApplicationId}/portal-follow-up-draft`,
+        { method: 'POST' },
+      )
+      const fallbackText = (draft as MessageDraft & { rendered_text?: string }).rendered_text ?? ''
+      setSelectedNoReplyDraft((draft.body ?? fallbackText).trim())
+      if (selectedApplicationJob?.id) {
+        await refreshSelectedJobArtifacts(selectedApplicationJob.id)
+      }
+      return `Follow-up draft created for review: ${draft.subject ?? 'No subject'}`
+    })
+  }
+
+  async function handleCopyNoReplyDraft() {
+    if (!selectedNoReplyDraft.trim()) {
+      setOperationError('Generate a no-reply draft first.')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(selectedNoReplyDraft)
+      setOperationMessage('Draft copied. Paste it when you find a recruiter/HR contact.')
+    } catch {
+      setOperationError('Clipboard access failed. Copy manually from the text box.')
+    }
+  }
+
+  async function handleCreateGmailReplyDraft(emailId: string) {
+    setEmailMutating((current) => ({ ...current, [emailId]: true }))
+    setOperationError(null)
+    try {
+      const emailRecord = emails.data.find((email) => email.id === emailId) ?? null
+      if (emailRecord && isNoReplySender(emailRecord.from_email)) {
+        setOperationError('Reply blocked: this sender is no-reply. Link a recruiter/HR email instead.')
+        return
+      }
+      await requestApi(`/emails/${emailId}/draft-reply`, {
+        method: 'POST',
+        body: JSON.stringify({
+          create_gmail_draft: true,
+        }),
+      })
+      const threadUrl = emailRecord ? gmailThreadUrl(emailRecord) : null
+      window.open(threadUrl ?? 'https://mail.google.com/mail/u/0/#drafts', '_blank', 'noopener,noreferrer')
+      setOperationMessage('Gmail draft created. Gmail was opened to continue editing/sending.')
+      await Promise.all([
+        loadResource<Email[]>('/emails', setEmails, [], { preserveDataWhileLoading: true }),
+        loadResource<Action[]>('/actions', setActions, [], { preserveDataWhileLoading: true }),
+      ])
+      if (effectiveSelectedApplicationId) {
+        await refreshApplicationViews(effectiveSelectedApplicationId)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create Gmail draft.'
+      setOperationError(message)
+    } finally {
+      setEmailMutating((current) => ({ ...current, [emailId]: false }))
+    }
+  }
+
+  async function autoSyncNextActions(applicationId: string) {
+    if (autoSyncedApplicationIds.current.has(applicationId)) {
+      return
+    }
+    if (autoSyncInFlightApplicationIds.current.has(applicationId)) {
+      return
+    }
+
+    autoSyncInFlightApplicationIds.current.add(applicationId)
+    try {
+      await requestApi(`/applications/${applicationId}/next-actions/sync`, {
+        method: 'POST',
+      })
+      autoSyncedApplicationIds.current.add(applicationId)
+      await refreshApplicationViews(applicationId)
+    } finally {
+      autoSyncInFlightApplicationIds.current.delete(applicationId)
     }
   }
 
@@ -1759,6 +2488,13 @@ function App() {
     return () => window.clearTimeout(timer)
   }, [gmailStatusState.data?.authenticated, handleSyncGmail])
 
+  useEffect(() => {
+    if (!workspaceUnlocked || !effectiveSelectedApplicationId) {
+      return
+    }
+    void autoSyncNextActions(effectiveSelectedApplicationId)
+  }, [workspaceUnlocked, effectiveSelectedApplicationId])
+
   if (!workspaceUnlocked) {
     return (
       <SetupHome
@@ -1768,6 +2504,10 @@ function App() {
         operationMessage={operationMessage}
         operationError={operationError}
         gmailConnecting={Boolean(operationMutating['gmail-web-oauth'])}
+        gmailConfiguring={Boolean(operationMutating['gmail-config-upload'])}
+        selectedGmailCredentialsFile={selectedGmailCredentialsFile}
+        onSelectGmailCredentialsFile={setSelectedGmailCredentialsFile}
+        onUploadGmailCredentials={() => void handleUploadGmailCredentials()}
         onConnectGmail={() => void handleStartGmailWebOAuth()}
         onOpenSetup={() => enterDashboard('setup')}
         onEnterDashboard={() => enterDashboard('overview')}
@@ -1776,25 +2516,27 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f7fb] text-slate-950">
-      <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col gap-6 px-4 py-5 lg:px-6">
-        <header className="rounded-2xl bg-slate-950 px-5 py-5 text-white shadow-sm">
+    <div className="min-h-screen text-[color:var(--app-ink)]">
+      <div className="mx-auto flex min-h-screen max-w-[1720px] flex-col gap-4 px-4 py-4 lg:px-5">
+        <header className="overflow-hidden rounded-xl border border-[color:var(--app-border)] bg-[#151815] px-5 py-4 text-white shadow-[0_12px_36px_rgba(24,27,24,0.14)]">
+          <div className="pointer-events-none absolute hidden" />
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-sky-300">CareerOps Agent</p>
-              <h1 className="text-2xl font-semibold tracking-tight text-white">
-                Application command center
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-[#8fd4ce]">
+                CareerOps Agent
+              </p>
+              <h1 className="text-2xl font-semibold tracking-tight text-white md:text-[1.9rem]">
+                Hiring pipeline, edited like a dossier.
               </h1>
-              <p className="max-w-3xl text-sm leading-6 text-slate-300">
-                Review job discovery, active applications, recruiter inbox signals,
-                profile evidence, CV drafts, and next actions from one private workspace.
+              <p className="max-w-3xl text-sm leading-6 text-stone-300">
+                Review job discovery, active applications, recruiter inbox signals, profile evidence, CV drafts, and next actions from one private workspace.
               </p>
             </div>
             <div className="flex flex-col gap-3 lg:min-w-[560px]">
-              <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+              <div className="rounded-lg border border-white/10 bg-white/10 p-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-xs font-semibold uppercase text-slate-400">Google</p>
+                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-stone-400">Google</p>
                     <p className="mt-1 text-sm font-semibold text-white">
                       {gmailStatusState.data?.authenticated ? 'Connected' : 'Sign-in required'}
                     </p>
@@ -1805,9 +2547,9 @@ function App() {
                       onClick={() => void handleStartGmailWebOAuth()}
                       disabled={
                         operationMutating['gmail-web-oauth'] ||
-                        !gmailStatusState.data?.credentials_file_exists
+                        !gmailStatusState.data?.oauth_configured
                       }
-                      className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="crm-button bg-[color:var(--app-bg-soft)] text-xs text-[color:var(--app-ink)] hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {gmailStatusState.data?.authenticated ? 'Reconnect' : 'Continue with Google'}
                     </button>
@@ -1818,7 +2560,7 @@ function App() {
                         operationMutating['sync-gmail'] ||
                         !gmailStatusState.data?.authenticated
                       }
-                      className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="crm-button border border-white/20 bg-white/10 text-xs text-white hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {operationMutating['sync-gmail'] ? 'Refreshing...' : 'Refresh inbox'}
                     </button>
@@ -1847,8 +2589,19 @@ function App() {
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[248px_minmax(0,1fr)]">
-          <aside className="self-start rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-5">
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="self-start rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] p-3 shadow-[0_10px_32px_rgba(24,27,24,0.05)] lg:sticky lg:top-4">
+            <div className="mb-4 rounded-lg bg-[color:var(--app-bg-soft)] p-3 ring-1 ring-[color:var(--app-border)]">
+              <p className="crm-label">
+                Workspace
+              </p>
+              <p className="mt-1 text-lg font-semibold text-[color:var(--app-ink)]">
+                Operations
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[color:var(--app-muted)]">
+                Move from evidence to application without leaving the desktop shell.
+              </p>
+            </div>
             <nav className="flex flex-col gap-1">
               {DEFAULT_SECTIONS.map((section) => (
                 <SectionButton
@@ -1861,320 +2614,368 @@ function App() {
               ))}
             </nav>
 
-            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <div className="mt-4 rounded-lg border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-3">
+              <p className="crm-label">
                 Current profile
               </p>
-              <p className="mt-2 text-sm font-medium text-slate-900">
+              <p className="mt-2 text-base font-semibold text-[color:var(--app-ink)]">
                 {cleanDisplayName(profile.data?.display_name)}
               </p>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="mt-1 text-sm leading-6 text-[color:var(--app-muted)]">
                 {profile.data?.headline
                   ? cleanDisplayText(profile.data.headline)
                   : 'Waiting for profile extraction'}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <span className="rounded-sm bg-slate-200 px-2 py-1 text-xs text-slate-700">
+                <span className="rounded-md bg-white px-2 py-1 text-xs text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
                   {profile.data?.skills.length ?? 0} skills
                 </span>
-                <span className="rounded-sm bg-slate-200 px-2 py-1 text-xs text-slate-700">
+                <span className="rounded-md bg-white px-2 py-1 text-xs text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
                   {profile.data?.projects.length ?? 0} projects
                 </span>
-                <span className="rounded-sm bg-slate-200 px-2 py-1 text-xs text-slate-700">
+                <span className="rounded-md bg-white px-2 py-1 text-xs text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
                   {profile.data?.experiences.length ?? 0} experiences
                 </span>
               </div>
             </div>
           </aside>
 
-          <main className="min-w-0 space-y-6">
+          <main className="min-w-0 space-y-4">
             {operationMessage ? (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm text-emerald-900 shadow-[0_14px_30px_rgba(16,185,129,0.08)]">
                 {operationMessage}
               </div>
             ) : null}
             {operationError ? (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+              <div className="rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm text-rose-900 shadow-[0_14px_30px_rgba(180,35,24,0.08)]">
                 {operationError}
               </div>
             ) : null}
 
             {activeSection === 'overview' ? (
               <>
-                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.95fr)]">
                   <Panel
-                    title="Daily operating picture"
-                    subtitle="Snapshot of the current pipeline using the latest stored summary, with fallback to live collections where available."
+                    title="Home"
+                    subtitle="A simpler daily view of what matters now: promising jobs, application progress, and the next move to make."
                   >
                     <ResourceBanner title="Daily summary" state={summaries} />
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <MetricCard
-                        label="New jobs"
-                        value={latestSummary?.content.counts?.new_jobs ?? jobs.data.length}
-                        note="Tracked in the discovery layer"
+                        label="Fresh jobs"
+                        value={jobs.data.length}
+                        note="Live opportunities currently in the workspace"
                       />
                       <MetricCard
-                        label="Top matches"
-                        value={latestSummary?.content.counts?.top_matches ?? 0}
-                        note="Highest confidence jobs already scored"
+                        label="Active applications"
+                        value={applications.data.length}
+                        note="Roles you are tracking beyond discovery"
                       />
                       <MetricCard
-                        label="Important emails"
-                        value={
-                          latestSummary?.content.counts?.important_emails ??
-                          importantEmails.length
-                        }
-                        note="High urgency or reply-required inbox items"
+                        label="Next actions"
+                        value={openActions.length}
+                        note="Follow-ups, interviews, and submission steps"
                       />
                       <MetricCard
-                        label="Open actions"
-                        value={latestSummary?.content.counts?.open_actions ?? openActions.length}
-                        note="Follow-ups, interview prep, or submission tasks"
-                      />
-                      <MetricCard
-                        label="Pending applications"
-                        value={
-                          latestSummary?.content.counts?.pending_applications ??
-                          pendingApplications.length
-                        }
-                        note="Still waiting for manual submission or review"
+                        label="Profile ready"
+                        value={`${profileCompletionPercent}%`}
+                        note="Resume, profile, and skills completeness"
                       />
                     </div>
 
-                    {latestSummary?.content.top_matches?.length ? (
-                      <div className="mt-5 grid gap-3 xl:grid-cols-2">
-                        {latestSummary.content.top_matches.map((match, index) => (
-                          <article
-                            key={`${match.title ?? 'job'}-${index}`}
-                            className="rounded-md border border-slate-200 bg-slate-50 p-4"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-medium text-slate-900">
-                                  {match.company ?? 'Unknown company'}
-                                </p>
-                                <p className="mt-1 text-sm text-slate-600">
-                                  {match.title ?? 'Unknown role'}
-                                </p>
+                    <div className="mt-6 grid gap-4 xl:grid-cols-2">
+                      {featuredJobs.length ? (
+                        featuredJobs.map((job) => {
+                          const linkedApplication = applicationsByJobId.get(job.id)
+                          return (
+                            <button
+                              key={job.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedJobId(job.id)
+                                setActiveSection('jobs')
+                              }}
+                              className="rounded-[1.4rem] border border-[color:var(--app-border)] bg-[linear-gradient(180deg,#fffdf9,#f7f1e8)] p-4 text-left shadow-[0_14px_30px_rgba(23,23,23,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(23,23,23,0.08)]"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-medium text-[color:var(--app-ink)]">
+                                    {job.company?.name ?? 'Unknown company'}
+                                  </p>
+                                  <p className="mt-1 text-base font-semibold text-[color:var(--app-ink)]">
+                                    {job.title}
+                                  </p>
+                                </div>
+                                <span className="rounded-full bg-white px-2.5 py-1 text-xs text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
+                                  {linkedApplication?.status ?? 'New'}
+                                </span>
                               </div>
-                              <span
-                                className={`inline-flex rounded-sm px-2 py-1 text-xs font-medium ${getRecommendationTone(match.recommendation)}`}
-                              >
-                                {match.recommendation}
-                              </span>
-                            </div>
-                            <p className="mt-3 text-sm text-slate-700">
-                              Score: {match.score}
-                            </p>
-                          </article>
-                        ))}
-                      </div>
-                    ) : null}
+                              <p className="mt-2 text-sm text-[color:var(--app-muted)]">
+                                {[job.location ?? 'Location not listed', job.work_mode ?? 'Work style not listed']
+                                  .filter(Boolean)
+                                  .join(' • ')}
+                              </p>
+                              <p className="mt-3 text-sm leading-6 text-[color:var(--app-muted)]">
+                                {truncate(cleanDisplayText(job.description), 170)}
+                              </p>
+                            </button>
+                          )
+                        })
+                      ) : (
+                        <EmptyState
+                          title="No job opportunities yet"
+                          body="Use Find new jobs in Settings to bring opportunities into the workspace."
+                        />
+                      )}
+                    </div>
                   </Panel>
 
-                  <Panel title="Profile readiness">
-                    <ResourceBanner title="Profile" state={profile} />
-                    {profile.data ? (
-                      <div className="space-y-4">
-                        <div>
-                          <p className="text-sm font-medium text-slate-800">
-                            {cleanDisplayName(profile.data.display_name)}
+                  <Panel
+                    title="Quick actions"
+                    subtitle="Only the smallest set of actions needed to keep the pipeline moving."
+                  >
+                    <div className="space-y-3">
+                      {homeQuickActions.map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={item.action}
+                          className="w-full rounded-[1.25rem] border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-4 text-left transition hover:bg-white hover:shadow-[0_12px_24px_rgba(23,23,23,0.06)]"
+                        >
+                          <p className="text-sm font-semibold text-[color:var(--app-ink)]">{item.label}</p>
+                          <p className="mt-1 text-sm leading-6 text-[color:var(--app-muted)]">{item.note}</p>
+                          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--app-accent)]">
+                            {item.cta}
                           </p>
-                          <p className="mt-1 text-sm text-slate-600">
-                            {profile.data.headline
-                              ? cleanDisplayText(profile.data.headline)
-                              : 'Headline not set yet'}
-                          </p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            {profile.data.location
-                              ? cleanDisplayText(profile.data.location)
-                              : 'Location not set yet'}
-                          </p>
-                        </div>
-                        <p className="text-sm leading-6 text-slate-700">
-                          {truncate(
-                            profile.data.summary
-                              ? cleanDisplayText(profile.data.summary)
-                              : profile.data.summary,
-                            320,
-                          )}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {profile.data.skills.slice(0, 8).map((skill) => (
-                            <span
-                              key={skill.id}
-                              className="rounded-sm bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800 ring-1 ring-sky-200"
-                            >
-                              {skill.name}
-                            </span>
-                          ))}
-                        </div>
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="mt-6 rounded-[1.35rem] border border-[color:var(--app-border)] bg-[linear-gradient(180deg,#fffdf8,#f5efe5)] p-4">
+                      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                        Profile completion
+                      </p>
+                      <p className="mt-2 font-serif text-3xl font-semibold text-[color:var(--app-ink)]">
+                        {profileCompletionPercent}%
+                      </p>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/80 ring-1 ring-[color:var(--app-border)]">
+                        <div
+                          className="h-full rounded-full bg-[color:var(--app-accent)] transition-all"
+                          style={{ width: `${profileCompletionPercent}%` }}
+                        />
                       </div>
-                    ) : null}
+                      <div className="mt-4 grid gap-2">
+                        <p className="text-sm text-[color:var(--app-muted)]">
+                          Google: {statusLabel(Boolean(gmailStatusState.data?.authenticated), 'connected', 'not connected')}
+                        </p>
+                        <p className="text-sm text-[color:var(--app-muted)]">
+                          Resume: {statusLabel(Boolean(latestCvDocument), 'ready', 'missing')}
+                        </p>
+                        <p className="text-sm text-[color:var(--app-muted)]">
+                          Profile: {statusLabel(Boolean(profile.data), 'built', 'not built yet')}
+                        </p>
+                        <p className="text-sm text-[color:var(--app-muted)]">
+                          Skills: {profile.data?.skills.length ?? 0} verified
+                        </p>
+                      </div>
+                    </div>
                   </Panel>
                 </div>
 
-                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
                   <Panel
-                    title="Priority pipeline"
-                    subtitle="Applications that still need a human move or already have a live signal."
+                    title="Application progress"
+                    subtitle="A compact view of the applications that still need attention."
                   >
-                    <div className="overflow-hidden rounded-md border border-slate-200">
-                      <table className="min-w-full divide-y divide-slate-200">
-                        <thead className="bg-slate-50">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Company / role
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Status
-                            </th>
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Timing
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 bg-white">
-                          {applications.data.slice(0, 6).map((application) => {
-                            const job = jobsById.get(application.job_id)
-                            return (
-                              <tr key={application.id}>
-                                <td className="px-4 py-3 align-top">
-                                  <p className="text-sm font-medium text-slate-900">
+                    {activeApplications.length ? (
+                      <div className="space-y-3">
+                        {activeApplications.map((application) => {
+                          const job = jobsById.get(application.job_id)
+                          return (
+                            <button
+                              key={application.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedApplicationId(application.id)
+                                setActiveSection('applications')
+                              }}
+                              className="w-full rounded-[1.3rem] border border-[color:var(--app-border)] bg-white/90 p-4 text-left transition hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(23,23,23,0.06)]"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-medium text-[color:var(--app-ink)]">
                                     {job?.company?.name ?? 'Unknown company'}
                                   </p>
-                                  <p className="mt-1 text-sm text-slate-600">
+                                  <p className="mt-1 text-sm text-[color:var(--app-muted)]">
                                     {job?.title ?? 'Unknown role'}
                                   </p>
-                                </td>
-                                <td className="px-4 py-3 align-top">
-                                  <span
-                                    className={`inline-flex rounded-sm px-2 py-1 text-xs font-medium ${getStatusTone(application.status)}`}
-                                  >
-                                    {application.status}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3 align-top text-sm text-slate-600">
-                                  <p>{formatRelativeDate(application.updated_at)}</p>
-                                  <p className="mt-1 text-xs text-slate-500">
-                                    {application.applied_at
-                                      ? `Applied ${formatDate(application.applied_at)}`
-                                      : 'Not applied yet'}
-                                  </p>
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                                </div>
+                                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getStatusTone(application.status)}`}>
+                                  {application.status}
+                                </span>
+                              </div>
+                              <p className="mt-3 text-sm text-[color:var(--app-muted)]">
+                                {application.applied_at
+                                  ? `Applied ${formatDate(application.applied_at)}`
+                                  : `Updated ${formatRelativeDate(application.updated_at)}`}
+                              </p>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <EmptyState
+                        title="No active applications yet"
+                        body="As soon as you track a role beyond discovery, it will appear here."
+                      />
+                    )}
                   </Panel>
 
-                  <Panel title="Inbox and actions">
+                  <Panel
+                    title="Upcoming actions"
+                    subtitle="The next interviews, replies, or follow-ups worth handling now."
+                  >
                     <ResourceBanner title="Actions" state={actions} />
-                    <ResourceBanner title="Emails" state={emails} />
-
-                    <div className="space-y-3">
-                      {openActions.slice(0, 4).map((action) => {
-                        const application = applications.data.find(
-                          (candidate) => candidate.id === action.application_id,
-                        )
-                        const job = application ? jobsById.get(application.job_id) : null
-                        return (
-                          <article
-                            key={action.id}
-                            className="rounded-md border border-slate-200 bg-slate-50 p-3"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-medium text-slate-900">{action.title}</p>
-                              <span
-                                className={`inline-flex rounded-sm px-2 py-1 text-xs font-medium ${getPriorityTone(action.priority)}`}
-                              >
-                                {action.priority}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-sm text-slate-600">
-                              {job?.company?.name ?? 'Unknown company'} -{' '}
-                              {job?.title ?? 'Unknown role'}
-                            </p>
-                            <p className="mt-2 text-sm text-slate-700">
-                              {truncate(action.details, 140)}
-                            </p>
-                          </article>
-                        )
-                      })}
-
-                      {openActions.length === 0 ? (
-                        <EmptyState
-                          title="No open actions right now"
-                          body="The queue is either clear or waiting for the next recruiter signal."
-                        />
-                      ) : null}
-
-                      {importantEmails.slice(0, 3).map((email) => (
-                        <article
-                          key={email.id}
-                          className="rounded-md border border-slate-200 bg-white p-3"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-medium text-slate-900">
-                              {email.company_name ?? email.from_name ?? email.from_email}
-                            </p>
-                            <span
-                              className={`inline-flex rounded-sm px-2 py-1 text-xs font-medium ${getPriorityTone(email.urgency)}`}
+                    {openActions.length ? (
+                      <div className="space-y-3">
+                        {openActions.slice(0, 4).map((action) => {
+                          const application = applications.data.find(
+                            (candidate) => candidate.id === action.application_id,
+                          )
+                          const job = application ? jobsById.get(application.job_id) : null
+                          return (
+                            <article
+                              key={action.id}
+                              className="rounded-[1.25rem] border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-4"
                             >
-                              {email.category}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-sm text-slate-600">
-                            {truncate(email.subject, 100)}
-                          </p>
-                          <p className="mt-2 text-sm text-slate-700">
-                            {truncate(cleanDisplayText(email.snippet ?? email.body_text ?? ''), 160)}
-                          </p>
-                        </article>
-                      ))}
-                    </div>
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-medium text-[color:var(--app-ink)]">{action.title}</p>
+                                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getPriorityTone(action.priority)}`}>
+                                  {action.priority}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-sm text-[color:var(--app-muted)]">
+                                {job?.company?.name ?? 'Unknown company'} - {job?.title ?? 'Unknown role'}
+                              </p>
+                              <p className="mt-3 text-sm leading-6 text-[color:var(--app-muted)]">
+                                {truncate(action.details, 140)}
+                              </p>
+                            </article>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <EmptyState
+                        title="Nothing urgent right now"
+                        body="When interviews, follow-ups, or submission tasks need attention, they will appear here."
+                      />
+                    )}
                   </Panel>
                 </div>
               </>
             ) : null}
 
             {activeSection === 'setup' ? (
-              <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="space-y-6">
+                {guidedAction === 'resume-upload' || guidedAction === 'profile-build' || guidedAction === 'job-discovery' ? (
+                  <div className="rounded-[1.45rem] border border-[color:var(--app-border)] bg-[linear-gradient(135deg,#fffdf8,#eef6f3)] p-5 shadow-[0_14px_32px_rgba(23,23,23,0.05)]">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                          Guided action
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-[color:var(--app-ink)]">
+                          {guidedAction === 'resume-upload'
+                            ? 'Add or update your main resume'
+                            : guidedAction === 'profile-build'
+                              ? 'Build your profile from the latest resume'
+                              : 'Search for fresh jobs'}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-[color:var(--app-muted)]">
+                          {guidedAction === 'resume-upload'
+                            ? 'Use the resume controls below to choose a file and add it to the workspace.'
+                            : guidedAction === 'profile-build'
+                              ? 'This creates the profile used for fit checks, tailored resumes, and outreach.'
+                              : 'Run job discovery from here, then return to Jobs to review the new roles.'}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        {guidedAction === 'resume-upload' ? (
+                          <button
+                            type="button"
+                            onClick={() => documentInputRef.current?.click()}
+                            className="rounded-2xl bg-[color:var(--app-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-92"
+                          >
+                            Choose resume file
+                          </button>
+                        ) : null}
+                        {guidedAction === 'profile-build' ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleExtractProfile()}
+                            disabled={operationMutating['extract-profile'] || !latestCvDocument}
+                            className="rounded-2xl bg-[color:var(--app-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {operationMutating['extract-profile'] ? 'Building profile...' : 'Build profile now'}
+                          </button>
+                        ) : null}
+                        {guidedAction === 'job-discovery' ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleRunDiscovery()}
+                            disabled={operationMutating['run-discovery']}
+                            className="rounded-2xl bg-[color:var(--app-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {operationMutating['run-discovery'] ? 'Looking for jobs...' : 'Find new jobs now'}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => setGuidedAction(null)}
+                          className="rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-4 py-2 text-sm font-medium text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)]"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <Panel
-                  title="Profile setup"
-                  subtitle="Upload the master CV first. CareerOps builds the profile from stored evidence."
+                  title="Resume and profile"
+                  subtitle="Add your main resume first. CareerOps uses it to build the profile that powers matching and tailored documents."
                 >
                   <div className="space-y-4">
                     <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
                       <label className="block">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Source type
+                        <span className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                          Document type
                         </span>
                         <select
                           value={documentSourceType}
                           onChange={(event) => setDocumentSourceType(event.target.value)}
-                          className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                          className="mt-2 w-full rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none transition focus:border-[color:var(--app-accent)]"
                         >
-                          <option value="cv">Base CV</option>
+                          <option value="cv">Main resume</option>
                           <option value="linkedin">LinkedIn PDF/text</option>
-                          <option value="manual">Manual profile note</option>
+                          <option value="manual">Notes about me</option>
                           <option value="portfolio">Portfolio/GitHub note</option>
                         </select>
                       </label>
 
                       <label className="block">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Document
+                        <span className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                          File
                         </span>
                         <input
+                          ref={documentInputRef}
                           type="file"
                           accept=".pdf,.docx,.txt,.md,.tex"
                           onChange={(event) =>
                             setSelectedDocument(event.target.files?.[0] ?? null)
                           }
-                          className="mt-2 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 file:mr-3 file:rounded-sm file:border-0 file:bg-slate-900 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white"
+                          className="mt-2 w-full rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] file:mr-3 file:rounded-xl file:border-0 file:bg-[color:var(--app-ink)] file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white"
                         />
                       </label>
                     </div>
@@ -2184,17 +2985,17 @@ function App() {
                         type="button"
                         onClick={() => void handleUploadDocument()}
                         disabled={operationMutating['upload-document']}
-                        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-2xl bg-[color:var(--app-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {operationMutating['upload-document']
                           ? 'Uploading...'
-                          : 'Upload document'}
+                          : 'Add file'}
                       </button>
                       <button
                         type="button"
                         onClick={() => void handleExtractProfile()}
                         disabled={operationMutating['extract-profile'] || !latestCvDocument}
-                        className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-4 py-2 text-sm font-medium text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {operationMutating['extract-profile']
                           ? 'Extracting...'
@@ -2204,21 +3005,21 @@ function App() {
                       </button>
                     </div>
 
-                    <div className="rounded-md border border-slate-200 bg-white p-4">
-                      <p className="text-sm font-medium text-sky-950">
-                        LangGraph profile agent
+                    <div className="rounded-[1.4rem] border border-[color:var(--app-border)] bg-[linear-gradient(180deg,#fcfffe,#edf7f5)] p-4">
+                      <p className="text-sm font-medium text-[color:var(--app-accent)]">
+                        Resume import
                       </p>
 
                       {IS_LOCAL_API ? (
                         <label className="mt-4 block">
-                          <span className="text-xs font-semibold uppercase tracking-wide text-sky-800">
-                            Local CV path
+                          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-accent)]">
+                            Resume file path
                           </span>
                           <input
                             type="text"
                             value={localDocumentPath}
                             onChange={(event) => setLocalDocumentPath(event.target.value)}
-                            className="mt-2 w-full rounded-md border border-sky-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                            className="mt-2 w-full rounded-2xl border border-sky-200 bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none transition focus:border-[color:var(--app-accent)]"
                             placeholder="C:\Users\you\...\resume.pdf"
                           />
                         </label>
@@ -2230,11 +3031,11 @@ function App() {
                             type="button"
                             onClick={() => void handleImportLocalCvAndRunAiProfileAgent()}
                             disabled={operationMutating['ai-profile-import-run']}
-                            className="rounded-md bg-sky-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-2xl bg-[color:var(--app-accent)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {operationMutating['ai-profile-import-run']
-                              ? 'Running AI profile agent...'
-                              : 'Import local CV + run AI profile agent'}
+                              ? 'Importing resume...'
+                              : 'Import resume from this computer'}
                           </button>
                         ) : null}
                         <button
@@ -2243,13 +3044,13 @@ function App() {
                           disabled={
                             operationMutating['ai-profile-latest-cv'] || !latestCvDocument
                           }
-                          className="rounded-md border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-sky-900 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-2xl border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-[color:var(--app-accent)] transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {operationMutating['ai-profile-latest-cv']
-                            ? 'Refreshing AI profile...'
+                            ? 'Refreshing profile...'
                             : latestCvDocument
-                              ? 'Run on latest CV'
-                              : 'Upload CV first'}
+                              ? 'Refresh from latest resume'
+                              : 'Add a resume first'}
                         </button>
                       </div>
                     </div>
@@ -2259,17 +3060,27 @@ function App() {
                       {documents.data.map((document) => (
                         <article
                           key={document.id}
-                          className="rounded-md border border-slate-200 bg-white p-3"
+                          className="rounded-[1.2rem] border border-[color:var(--app-border)] bg-white/90 p-3"
                         >
                           <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-medium text-slate-900">
+                            <p className="text-sm font-medium text-[color:var(--app-ink)]">
                               {document.original_filename}
                             </p>
-                            <span className="rounded-sm bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
-                              {document.source_type}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="rounded-full bg-[color:var(--app-bg-soft)] px-2.5 py-1 text-xs font-medium text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
+                                {document.source_type}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteDocument(document)}
+                                disabled={Boolean(operationMutating[`delete-document-${document.id}`])}
+                                className="rounded-lg border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {operationMutating[`delete-document-${document.id}`] ? 'Deleting...' : 'Delete'}
+                              </button>
+                            </div>
                           </div>
-                          <p className="mt-2 text-xs text-slate-500">
+                          <p className="mt-2 text-xs text-[color:var(--app-muted)]">
                             {document.extracted_text
                               ? `${document.extracted_text.length} extracted characters`
                               : 'Stored without extracted text yet'}
@@ -2279,7 +3090,7 @@ function App() {
                       {documents.data.length === 0 ? (
                         <EmptyState
                           title="No documents uploaded"
-                          body="Upload your master CV to build the candidate profile."
+                          body="Add your main resume to build the profile used for matching and tailored documents."
                         />
                       ) : null}
                     </div>
@@ -2287,14 +3098,14 @@ function App() {
                 </Panel>
 
                 <Panel
-                  title="Agent controls"
-                  subtitle="Refresh the data pipeline when you need a current view."
+                  title="Connections and maintenance"
+                  subtitle="Keep Google, job discovery, inbox review, and matching data up to date from one place."
                 >
                   <div className="space-y-5">
                     <div className="grid gap-3 md:grid-cols-2">
                       <MetricCard
                         label="Gmail"
-                        value={gmailStatusState.data?.authenticated ? 'Ready' : 'Needs auth'}
+                        value={gmailStatusState.data?.authenticated ? 'Ready' : 'Required'}
                         note={
                           gmailStatusState.data?.token_file_exists
                             ? 'Connected'
@@ -2314,41 +3125,24 @@ function App() {
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                           <p className="text-sm font-medium text-slate-900">
-                            Google
+                            Google account
                           </p>
                           <p className="mt-1 text-sm leading-6 text-slate-600">
                             {gmailStatusState.data?.authenticated
                               ? 'Connected'
-                              : gmailStatusState.data?.credentials_file_exists
+                              : gmailStatusState.data?.oauth_configured
                                 ? 'Ready for sign-in'
                                 : 'Not configured'}
                           </p>
                         </div>
-                        {IS_LOCAL_API ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleRunGmailAuth()}
-                            disabled={
-                              operationMutating['gmail-auth'] ||
-                              !gmailStatusState.data?.credentials_file_exists
-                            }
-                            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {operationMutating['gmail-auth']
-                              ? 'Waiting for Google...'
-                              : gmailStatusState.data?.authenticated
-                                ? 'Refresh Gmail OAuth'
-                                : 'Authenticate Gmail'}
-                          </button>
-                        ) : null}
                       <button
                         type="button"
                         onClick={() => void handleStartGmailWebOAuth()}
                           disabled={
                             operationMutating['gmail-web-oauth'] ||
-                            !gmailStatusState.data?.credentials_file_exists
+                            !gmailStatusState.data?.oauth_configured
                           }
-                          className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-4 py-2 text-sm font-medium text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)] disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {operationMutating['gmail-web-oauth']
                             ? 'Opening OAuth...'
@@ -2361,12 +3155,12 @@ function App() {
 
                     <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
                       <p className="text-sm font-medium text-amber-950">
-                        AI inbox triage
+                        Email review
                       </p>
                       <div className="mt-4 grid gap-3 sm:grid-cols-[160px_minmax(0,1fr)]">
                         <label className="block">
                           <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">
-                            AI batch size
+                            Emails to review
                           </span>
                           <input
                             type="number"
@@ -2388,8 +3182,8 @@ function App() {
                             className="w-full rounded-md border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {operationMutating['ai-email-triage']
-                              ? 'Triaging with AI...'
-                              : 'Triage unlinked emails with AI'}
+                              ? 'Reviewing emails...'
+                              : 'Review recent hiring emails'}
                           </button>
                         </div>
                       </div>
@@ -2397,7 +3191,7 @@ function App() {
 
                     <div className="rounded-md border border-sky-200 bg-sky-50 p-4">
                       <p className="text-sm font-medium text-sky-950">
-                        Semantic matching
+                        Job matching
                       </p>
                       <button
                         type="button"
@@ -2406,8 +3200,8 @@ function App() {
                         className="mt-4 rounded-md bg-sky-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {operationMutating['rebuild-embeddings']
-                          ? 'Building embeddings...'
-                          : 'Rebuild profile/job embeddings'}
+                          ? 'Refreshing matching...'
+                          : 'Refresh job matching'}
                       </button>
                     </div>
 
@@ -2419,8 +3213,8 @@ function App() {
                         className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {operationMutating['run-discovery']
-                          ? 'Running discovery...'
-                          : 'Run Job Discovery Agent'}
+                          ? 'Looking for jobs...'
+                          : 'Find new jobs'}
                       </button>
                       <button
                         type="button"
@@ -2443,8 +3237,8 @@ function App() {
                         className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {operationMutating['sync-linkedin']
-                          ? 'Refreshing LinkedIn...'
-                          : 'Refresh LinkedIn alerts'}
+                          ? 'Importing LinkedIn alerts...'
+                          : 'Import LinkedIn alerts'}
                       </button>
                       <button
                         type="button"
@@ -2453,8 +3247,8 @@ function App() {
                         className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {operationMutating['reclassify-emails']
-                          ? 'Reclassifying...'
-                          : 'Reclassify inbox'}
+                          ? 'Re-checking inbox...'
+                          : 'Re-check inbox categories'}
                       </button>
                       <button
                         type="button"
@@ -2463,54 +3257,100 @@ function App() {
                         className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {operationMutating['daily-summary']
-                          ? 'Generating...'
-                          : 'Generate daily summary'}
+                          ? 'Refreshing summary...'
+                          : 'Refresh home summary'}
                       </button>
                       <button
                         type="button"
                         onClick={() => void refreshCoreData()}
                         className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
                       >
-                        Refresh dashboard
+                        Refresh all data
                       </button>
                     </div>
 
                   </div>
                 </Panel>
+                </div>
               </div>
             ) : null}
 
             {activeSection === 'jobs' ? (
-              <div className="grid gap-6 xl:grid-cols-[minmax(360px,0.95fr)_minmax(0,1.25fr)]">
+              <div className="space-y-6">
+                {guidedAction === 'job-review' && selectedJob ? (
+                  <div className="rounded-[1.45rem] border border-[color:var(--app-border)] bg-[linear-gradient(135deg,#fffdf8,#f2efe8)] p-5 shadow-[0_14px_32px_rgba(23,23,23,0.05)]">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                          Guided action
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-[color:var(--app-ink)]">
+                          Review this opportunity and decide what to do next
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-[color:var(--app-muted)]">
+                          Check fit, create a tailored resume, or remove the role from the workspace if it is not relevant.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleScoreSelectedJob()}
+                          disabled={operationMutating['score-job'] || selectedJobDescriptionIncomplete}
+                          className="rounded-2xl bg-[color:var(--app-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {operationMutating['score-job'] ? 'Checking fit...' : 'Check fit'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteSelectedJob()}
+                          disabled={operationMutating['delete-job']}
+                          className="rounded-2xl border border-rose-300 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {operationMutating['delete-job'] ? 'Removing...' : 'Remove from workspace'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGuidedAction(null)}
+                          className="rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-4 py-2 text-sm font-medium text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)]"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="grid gap-4 xl:grid-cols-[minmax(340px,0.88fr)_minmax(0,1.35fr)]">
                 <Panel
-                  title="Job inventory"
-                  subtitle="Discovered and manually added roles across all configured sources."
+                  title="Job opportunities"
+                  subtitle="A searchable shortlist of roles with a dedicated detail view for responsibilities, requirements, and application progress."
                 >
                   <div className="mb-4">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <label className="crm-label block">
                       Search jobs
                     </label>
                     <input
                       type="text"
                       value={jobSearch}
                       onChange={(event) => setJobSearch(event.target.value)}
-                      placeholder="Title, company, source, location"
-                      className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500"
+                      placeholder="Search by title, company, source, or location"
+                      className="crm-input mt-2 w-full px-3 py-2 text-sm"
                     />
                   </div>
                   <ResourceBanner title="Jobs" state={jobs} />
                   <div className="space-y-3">
                     {filteredJobs.slice(0, 40).map((job) => {
                       const selected = job.id === effectiveSelectedJobId
+                      const linkedApplication = applicationsByJobId.get(job.id)
                       return (
                         <button
                           key={job.id}
                           type="button"
                           onClick={() => setSelectedJobId(job.id)}
-                          className={`w-full rounded-md border p-4 text-left transition ${
+                          className={`w-full rounded-[1.35rem] border p-4 text-left transition ${
                             selected
-                              ? 'border-slate-900 bg-slate-900 text-white'
-                              : 'border-slate-200 bg-slate-50 text-slate-900 hover:bg-slate-100'
+                              ? 'border-[color:var(--app-ink)] bg-[color:var(--app-ink)] text-white shadow-[0_18px_40px_rgba(23,23,23,0.18)]'
+                              : 'border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] text-[color:var(--app-ink)] hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_18px_36px_rgba(23,23,23,0.06)]'
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -2523,22 +3363,49 @@ function App() {
                               >
                                 {job.company?.name ?? 'Unknown company'}
                               </p>
+                              <p
+                                className={`mt-2 text-xs ${
+                                  selected ? 'text-stone-300' : 'text-[color:var(--app-muted)]'
+                                }`}
+                              >
+                                {job.location ?? 'Location not listed'}
+                                {' · '}
+                                {job.work_mode ?? 'Work mode not listed'}
+                              </p>
                             </div>
-                            <span
-                              className={`rounded-sm px-2 py-1 text-xs ${
-                                selected
-                                  ? 'bg-white/15 text-white'
-                                  : 'bg-slate-200 text-slate-700'
-                              }`}
-                            >
-                              {formatSourceLabel(job.source)}
-                            </span>
+                            <div className="flex flex-col items-end gap-2">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs ${
+                                  selected
+                                    ? 'bg-white/15 text-white'
+                                    : 'bg-white text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]'
+                                }`}
+                              >
+                                {formatSourceLabel(job.source)}
+                              </span>
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[0.68rem] font-medium ${
+                                  selected
+                                    ? 'bg-white/10 text-stone-100'
+                                    : getStatusTone(linkedApplication?.status ?? 'Not applied')
+                                }`}
+                              >
+                                {linkedApplication?.status ?? 'Not applied'}
+                              </span>
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[0.68rem] font-medium ${
+                                  selected
+                                    ? 'bg-white/10 text-stone-100'
+                                    : isJobDescriptionIncomplete(job)
+                                      ? 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
+                                      : 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200'
+                                }`}
+                              >
+                                {descriptionStatusLabel(job)}
+                              </span>
+                            </div>
                           </div>
-                          <p
-                            className={`mt-3 text-sm leading-6 ${
-                              selected ? 'text-slate-200' : 'text-slate-600'
-                            }`}
-                          >
+                          <p className={`mt-3 text-sm leading-6 ${selected ? 'text-stone-200' : 'text-[color:var(--app-muted)]'}`}>
                             {truncate(cleanDisplayText(job.description), 170)}
                           </p>
                         </button>
@@ -2552,31 +3419,113 @@ function App() {
                     title={selectedJob?.title ?? 'Select a job'}
                     subtitle={
                       selectedJob
-                        ? `${selectedJob.company?.name ?? 'Unknown company'} - ${selectedJob.location ?? 'Location not parsed'}`
-                        : 'Pick a job from the list to inspect score evidence and generated artifacts.'
+                        ? `${selectedJob.company?.name ?? 'Unknown company'} · ${selectedJob.location ?? 'Location not listed'}`
+                        : 'Pick a role from the list to review requirements, fit, and tailored documents.'
                     }
                   >
                     {selectedJob ? (
                       <div className="space-y-5">
                         <div className="flex flex-wrap gap-2">
-                          <span className="rounded-sm bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+                          <span className="rounded-full bg-[color:var(--app-bg-soft)] px-2.5 py-1 text-xs font-medium text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
                             {formatSourceLabel(selectedJob.source)}
                           </span>
-                          <span className="rounded-sm bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+                          <span className="rounded-full bg-[color:var(--app-bg-soft)] px-2.5 py-1 text-xs font-medium text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
                             {selectedJob.work_mode ?? 'Work mode not parsed'}
                           </span>
-                          <span className="rounded-sm bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+                          <span className="rounded-full bg-[color:var(--app-bg-soft)] px-2.5 py-1 text-xs font-medium text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
                             {selectedJob.seniority ?? 'Seniority not parsed'}
+                          </span>
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                              getStatusTone(selectedJobApplication?.status ?? 'Not applied')
+                            }`}
+                          >
+                            {selectedJobApplication?.status ?? 'Not applied'}
+                          </span>
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                              selectedJobDescriptionIncomplete
+                                ? 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
+                                : 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200'
+                            }`}
+                          >
+                            {descriptionStatusLabel(selectedJob)}
                           </span>
                         </div>
 
-                        <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                        {selectedJob.description_status === 'partial_from_email' ? (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                            This job was discovered from a LinkedIn email alert, but the full job description has not been resolved yet.
+                          </div>
+                        ) : null}
+
+                        <div className="grid gap-2 rounded-lg border border-[color:var(--app-border)] bg-white p-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {[
+                            {
+                              label: 'Company',
+                              value: selectedJob.company?.name ?? 'Unknown',
+                              note: formatSourceLabel(selectedJob.source),
+                            },
+                            {
+                              label: 'Location',
+                              value: selectedJob.location ?? 'Not listed',
+                              note: selectedJob.work_mode ?? 'Work mode not listed',
+                            },
+                            {
+                              label: 'Posted',
+                              value: selectedJob.posted_at ? formatDate(selectedJob.posted_at) : 'Unknown',
+                              note: selectedJob.application_deadline
+                                ? `Deadline ${formatDate(selectedJob.application_deadline)}`
+                                : `Added ${formatDate(selectedJob.created_at)}`,
+                            },
+                            {
+                              label: 'Salary',
+                              value: selectedJobSalary ?? 'Unknown',
+                              note: 'From job description',
+                            },
+                            {
+                              label: 'Apply link',
+                              value: formatAvailabilityLabel(selectedJob.availability_status) || 'Unknown',
+                              note: selectedJob.availability_checked_at
+                                ? `Checked ${formatRelativeDate(selectedJob.availability_checked_at)}`
+                                : 'Not checked yet',
+                            },
+                            {
+                              label: 'Application',
+                              value: selectedJobApplication?.status ?? 'New',
+                              note: selectedJobApplication?.applied_at
+                                ? `Updated ${formatDate(selectedJobApplication.applied_at)}`
+                                : 'No application tracked',
+                            },
+                            {
+                              label: 'Description',
+                              value: descriptionStatusLabel(selectedJob),
+                              note: selectedJob.resolution_confidence !== null
+                                ? `Confidence ${Math.round(selectedJob.resolution_confidence * 100)}%`
+                                : selectedJob.resolution_notes ?? 'Not resolved yet',
+                            },
+                          ].map((item) => (
+                            <div key={item.label} className="min-w-0 rounded-md bg-[color:var(--app-bg-soft)] px-3 py-2 ring-1 ring-[color:var(--app-border)]">
+                              <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-[color:var(--app-muted)]">
+                                {item.label}
+                              </p>
+                              <p className="mt-1 truncate text-sm font-semibold text-[color:var(--app-ink)]" title={String(item.value)}>
+                                {item.value}
+                              </p>
+                              <p className="mt-0.5 truncate text-xs text-[color:var(--app-muted)]" title={item.note}>
+                                {item.note}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-4">
                           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                             <div>
-                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
                                 Source trace
                               </p>
-                              <p className="mt-1 text-sm text-slate-700">
+                              <p className="mt-2 text-sm text-[color:var(--app-muted)]">
                                 Imported from {formatSourceLabel(selectedJob.source)}
                                 {selectedJob.source_trace?.email_subject
                                   ? ` via email "${String(selectedJob.source_trace.email_subject)}"`
@@ -2585,7 +3534,7 @@ function App() {
                                   : ''}
                               </p>
                               {selectedJob.source_trace?.gmail_message_id ? (
-                                <p className="mt-1 text-xs text-slate-500">
+                                <p className="mt-1 text-xs text-[color:var(--app-muted)]/80">
                                   Gmail message: {String(selectedJob.source_trace.gmail_message_id)}
                                 </p>
                               ) : null}
@@ -2596,7 +3545,7 @@ function App() {
                                   href={selectedJob.source_url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="rounded-md bg-white px-3 py-2 text-xs font-medium text-slate-800 ring-1 ring-slate-300 transition hover:bg-slate-100"
+                                  className="rounded-2xl bg-white px-3 py-2 text-xs font-medium text-[color:var(--app-ink)] ring-1 ring-[color:var(--app-border-strong)] transition hover:bg-[color:var(--app-bg-soft)]"
                                 >
                                   Open original job
                                 </a>
@@ -2606,7 +3555,7 @@ function App() {
                                   href={`https://mail.google.com/mail/u/0/#inbox/${String(selectedJob.source_trace.gmail_thread_id)}`}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="rounded-md bg-white px-3 py-2 text-xs font-medium text-slate-800 ring-1 ring-slate-300 transition hover:bg-slate-100"
+                                  className="rounded-2xl bg-white px-3 py-2 text-xs font-medium text-[color:var(--app-ink)] ring-1 ring-[color:var(--app-border-strong)] transition hover:bg-[color:var(--app-bg-soft)]"
                                 >
                                   Open source email
                                 </a>
@@ -2614,31 +3563,41 @@ function App() {
                             </div>
                           </div>
                           <details className="mt-3">
-                            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <summary className="cursor-pointer text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
                               Raw source metadata
                             </summary>
-                            <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-white p-3 text-xs leading-5 text-slate-700 ring-1 ring-slate-200">
+                            <pre className="mt-2 max-h-64 overflow-auto rounded-2xl bg-white p-3 text-xs leading-5 text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
                               {payloadText(selectedJob.source_trace ?? selectedJob.raw_payload)}
                             </pre>
                           </details>
                         </div>
 
-                        <div className="flex flex-wrap gap-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex flex-wrap gap-3 rounded-[1.35rem] border border-[color:var(--app-border)] bg-[linear-gradient(180deg,#fffdf8,#f6f0e7)] p-3">
+                          <button
+                            type="button"
+                            onClick={() => void handleResolveSelectedJobDescription()}
+                            disabled={operationMutating['resolve-job-description'] || !selectedJobDescriptionIncomplete}
+                            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {operationMutating['resolve-job-description']
+                              ? 'Resolving...'
+                              : 'Resolve description'}
+                          </button>
                           <button
                             type="button"
                             onClick={() => void handleScoreSelectedJob()}
-                            disabled={operationMutating['score-job']}
+                            disabled={operationMutating['score-job'] || selectedJobDescriptionIncomplete}
                             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {operationMutating['score-job'] ? 'Scoring...' : 'Score match'}
+                            {operationMutating['score-job'] ? 'Checking fit...' : 'Check fit'}
                           </button>
                           <button
                             type="button"
                             onClick={() => void handleCreateCvPlan()}
-                            disabled={operationMutating['cv-plan']}
+                            disabled={operationMutating['cv-plan'] || selectedJobDescriptionIncomplete}
                             className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {operationMutating['cv-plan'] ? 'Planning...' : 'Create CV plan'}
+                            {operationMutating['cv-plan'] ? 'Planning...' : 'Plan tailored resume'}
                           </button>
                           <button
                             type="button"
@@ -2648,17 +3607,27 @@ function App() {
                           >
                             {operationMutating['final-cv']
                               ? 'Generating...'
-                              : 'Generate LaTeX CV'}
+                              : 'Create tailored resume'}
                           </button>
                           <button
                             type="button"
                             onClick={() => void handleGenerateMessageDrafts()}
-                            disabled={operationMutating['message-drafts']}
+                            disabled={operationMutating['message-drafts'] || selectedJobDescriptionIncomplete}
                             className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {operationMutating['message-drafts']
                               ? 'Drafting...'
-                              : 'Generate messages'}
+                              : 'Create outreach drafts'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleCheckSelectedJobAvailability()}
+                            disabled={operationMutating['availability-check'] || !selectedJob.source_url}
+                            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {operationMutating['availability-check']
+                              ? 'Checking link...'
+                              : 'Verify apply link'}
                           </button>
                           <button
                             type="button"
@@ -2668,17 +3637,390 @@ function App() {
                           >
                             {operationMutating['job-embedding']
                               ? 'Embedding...'
-                              : 'Refresh semantic match'}
+                              : 'Refresh job insights'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteSelectedJob()}
+                            disabled={operationMutating['delete-job']}
+                            className="rounded-md border border-rose-300 bg-white px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {operationMutating['delete-job'] ? 'Removing...' : 'Remove from workspace'}
                           </button>
                         </div>
+                        {selectedJobDescriptionIncomplete || selectedJob.fetch_status === 'needs_manual_review' ? (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+                            Final scoring, CV tailoring, and outreach drafts are blocked until this job has a complete official description. Resolve from ATS, accept a review candidate, add an official public job URL, or paste the full description manually.
+                          </div>
+                        ) : null}
 
-                        <p className="text-sm leading-7 text-slate-700">
-                          {cleanDisplayText(selectedJob.description)}
-                        </p>
+                        <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-white p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                Description resolver
+                              </p>
+                              <p className="mt-2 text-sm leading-6 text-[color:var(--app-muted)]">
+                                {selectedJob.resolution_notes ?? 'No resolver attempt has been accepted for this role yet.'}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="rounded-full bg-[color:var(--app-bg-soft)] px-2.5 py-1 text-xs font-medium text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
+                                {selectedJob.description_source ?? 'No source'}
+                              </span>
+                              <span className="rounded-full bg-[color:var(--app-bg-soft)] px-2.5 py-1 text-xs font-medium text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
+                                {selectedJob.resolution_confidence !== null
+                                  ? `${Math.round(selectedJob.resolution_confidence * 100)}% confidence`
+                                  : 'No confidence'}
+                              </span>
+                            </div>
+                          </div>
+                          {selectedJob.resolved_description_url ? (
+                            <a
+                              href={selectedJob.resolved_description_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="mt-3 inline-flex rounded-md border border-[color:var(--app-border-strong)] px-3 py-2 text-xs font-medium text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)]"
+                            >
+                              Open resolved source
+                            </a>
+                          ) : null}
+                          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+                            <input
+                              value={selectedJobOfficialUrlInput}
+                              onChange={(event) => {
+                                if (selectedJob) {
+                                  setJobOfficialUrlDrafts((current) => ({
+                                    ...current,
+                                    [selectedJob.id]: event.target.value,
+                                  }))
+                                }
+                              }}
+                              placeholder="Add official public job URL"
+                              className="min-h-10 rounded-md border border-[color:var(--app-border-strong)] bg-[color:var(--app-bg-soft)] px-3 text-sm text-[color:var(--app-ink)] outline-none transition focus:border-[color:var(--app-accent)]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void handleResolveSelectedJobManualUrl()}
+                              disabled={operationMutating['manual-job-url'] || selectedJobOfficialUrlInput.trim().length < 8}
+                              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {operationMutating['manual-job-url'] ? 'Checking URL...' : 'Add official job URL'}
+                            </button>
+                          </div>
+                          {selectedJobReviewCandidates.length ? (
+                            <div className="mt-4 space-y-3">
+                              {selectedJobReviewCandidates.map((attempt) => (
+                                <div
+                                  key={attempt.id}
+                                  className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950"
+                                >
+                                  <div className="grid gap-2 md:grid-cols-2">
+                                    <div>
+                                      <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-amber-800">
+                                        Candidate source
+                                      </p>
+                                      <p className="mt-1 font-semibold">{attempt.attempted_source}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-amber-800">
+                                        Confidence
+                                      </p>
+                                      <p className="mt-1 font-semibold">
+                                        {attempt.confidence !== null ? `${Math.round(attempt.confidence * 100)}%` : 'Unknown'}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-amber-800">
+                                        Candidate title
+                                      </p>
+                                      <p className="mt-1">{unknownToDisplayString(attempt.metadata?.posting_title ?? 'Unknown')}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-amber-800">
+                                        Candidate company
+                                      </p>
+                                      <p className="mt-1">{unknownToDisplayString(attempt.metadata?.posting_company ?? 'Unknown')}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-amber-800">
+                                        Candidate location
+                                      </p>
+                                      <p className="mt-1">{unknownToDisplayString(attempt.metadata?.posting_location ?? 'Not listed')}</p>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-[0.66rem] font-semibold uppercase tracking-[0.08em] text-amber-800">
+                                        Candidate URL
+                                      </p>
+                                      {attempt.attempted_url ? (
+                                        <a href={attempt.attempted_url} target="_blank" rel="noreferrer" className="mt-1 block truncate underline">
+                                          {attempt.attempted_url}
+                                        </a>
+                                      ) : (
+                                        <p className="mt-1">No URL</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {attempt.reason ? <p className="mt-3 text-xs leading-5">{attempt.reason}</p> : null}
+                                  {attempt.metadata?.evidence ? (
+                                    <pre className="mt-2 max-h-28 overflow-auto rounded-md bg-white/70 p-2 text-xs leading-5">
+                                      {payloadText(attempt.metadata.evidence)}
+                                    </pre>
+                                  ) : null}
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleAcceptResolutionCandidate(attempt.id)}
+                                      disabled={operationMutating[`accept-candidate-${attempt.id}`]}
+                                      className="rounded-md bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Accept this description
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleRejectResolutionCandidate(attempt.id)}
+                                      disabled={operationMutating[`reject-candidate-${attempt.id}`]}
+                                      className="rounded-md border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Reject
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const pasted = String(attempt.metadata?.candidate_description ?? '')
+                                        if (selectedJob && pasted) {
+                                          setJobDescriptionDrafts((current) => ({ ...current, [selectedJob.id]: pasted }))
+                                        }
+                                      }}
+                                      className="rounded-md border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-900 transition hover:bg-amber-100"
+                                    >
+                                      Paste description manually
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className="mt-4 space-y-2">
+                            {selectedJobResolutionAttempts.data.map((attempt) => (
+                              <div
+                                key={attempt.id}
+                                className="rounded-md bg-[color:var(--app-bg-soft)] px-3 py-2 text-xs text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <span className="font-semibold text-[color:var(--app-ink)]">
+                                    {attempt.attempted_source} · {attempt.status}
+                                  </span>
+                                  <span>
+                                    {attempt.confidence !== null
+                                      ? `${Math.round(attempt.confidence * 100)}%`
+                                      : formatRelativeDate(attempt.created_at)}
+                                  </span>
+                                </div>
+                                {attempt.attempted_url ? (
+                                  <a href={attempt.attempted_url} target="_blank" rel="noreferrer" className="mt-1 block truncate underline">
+                                    {attempt.attempted_url}
+                                  </a>
+                                ) : null}
+                                {attempt.reason ? <p className="mt-1">{attempt.reason}</p> : null}
+                                {attempt.error_message ? <p className="mt-1 text-rose-700">{attempt.error_message}</p> : null}
+                                <p className="mt-1">{formatRelativeDate(attempt.created_at)}</p>
+                              </div>
+                            ))}
+                            {!selectedJobResolutionAttempts.loading && selectedJobResolutionAttempts.data.length === 0 ? (
+                              <p className="text-xs text-[color:var(--app-muted)]">
+                                No resolver attempts recorded yet.
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-white p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                Job description for this role
+                              </p>
+                              <p className="mt-2 text-sm leading-6 text-[color:var(--app-muted)]">
+                                Paste or correct the full description for this selected job so scoring, requirements, and CV tailoring use the right role context.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleUpdateSelectedJobDescription()}
+                              disabled={
+                                operationMutating['selected-job-description'] ||
+                                !effectiveSelectedJobId ||
+                                selectedJobDescriptionInput.trim().length < 20
+                              }
+                              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {operationMutating['selected-job-description']
+                                ? 'Saving...'
+                                : 'Paste description manually'}
+                            </button>
+                          </div>
+                          <textarea
+                            value={selectedJobDescriptionInput}
+                            onChange={(event) => {
+                              if (selectedJob) {
+                                setJobDescriptionDrafts((current) => ({
+                                  ...current,
+                                  [selectedJob.id]: event.target.value,
+                                }))
+                              }
+                            }}
+                            rows={9}
+                            placeholder="Paste the full job description for this selected job."
+                            className="mt-4 min-h-52 w-full resize-y rounded-2xl border border-[color:var(--app-border-strong)] bg-[color:var(--app-bg-soft)] px-4 py-3 text-sm leading-6 text-[color:var(--app-ink)] outline-none transition focus:border-[color:var(--app-accent)]"
+                          />
+                        </div>
+
+                        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_320px]">
+                          <div className="space-y-5">
+                            <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-white p-5">
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                Role overview
+                              </p>
+                              <p className="mt-3 text-sm leading-7 text-slate-700">
+                                {selectedJobSections.overview || cleanDisplayText(selectedJob.description)}
+                              </p>
+                            </div>
+
+                            <div className="grid gap-5 lg:grid-cols-2">
+                              <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-5">
+                                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                  Responsibilities
+                                </p>
+                                {selectedJobSections.responsibilities.length ? (
+                                  <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+                                    {selectedJobSections.responsibilities.slice(0, 6).map((item) => (
+                                      <li key={item}>- {item}</li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className="mt-3 text-sm text-[color:var(--app-muted)]">
+                                    Responsibilities were not clearly structured in the source description yet.
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-5">
+                                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                  Requirements
+                                </p>
+                                {(selectedJobSections.requirements.length ||
+                                  selectedJobScore?.extracted_requirements.required_skills?.length) ? (
+                                  <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+                                    {(selectedJobSections.requirements.length
+                                      ? selectedJobSections.requirements
+                                      : selectedJobScore?.extracted_requirements.required_skills ?? []
+                                    )
+                                      .slice(0, 6)
+                                      .map((item) => (
+                                        <li key={item}>- {item}</li>
+                                      ))}
+                                  </ul>
+                                ) : (
+                                  <p className="mt-3 text-sm text-[color:var(--app-muted)]">
+                                    Requirements will appear here once the role has structured or scored fit data.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-white p-5">
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                Full description
+                              </p>
+                              <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">
+                                {cleanDisplayText(selectedJob.description)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-5">
+                            <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-[linear-gradient(180deg,#fffdf8,#f4eee4)] p-5">
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                Technologies
+                              </p>
+                              {selectedJobTechnologies.length ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {selectedJobTechnologies.map((technology) => (
+                                    <span
+                                      key={technology}
+                                      className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-[color:var(--app-ink)] ring-1 ring-[color:var(--app-border)]"
+                                    >
+                                      {technology}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="mt-3 text-sm text-[color:var(--app-muted)]">
+                                  No technology tags were inferred yet from the job text.
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-5">
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                Company and application
+                              </p>
+                              <dl className="mt-3 space-y-3 text-sm text-slate-700">
+                                <div>
+                                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Company
+                                  </dt>
+                                  <dd className="mt-1">{selectedJob.company?.name ?? 'Unknown company'}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Location
+                                  </dt>
+                                  <dd className="mt-1">
+                                    {selectedJob.location ?? 'Location not listed'}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Work style
+                                  </dt>
+                                  <dd className="mt-1">
+                                    {selectedJob.work_mode ?? 'Not identified'}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Application status
+                                  </dt>
+                                  <dd className="mt-1">
+                                    {selectedJobApplication?.status ?? 'Not applied'}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Apply availability
+                                  </dt>
+                                  <dd className="mt-2">
+                                    <span
+                                      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getAvailabilityTone(selectedJob.availability_status)}`}
+                                    >
+                                      {formatAvailabilityLabel(selectedJob.availability_status)}
+                                    </span>
+                                  </dd>
+                                  <p className="mt-2 text-xs leading-5 text-[color:var(--app-muted)]">
+                                    {selectedJob.availability_reason ??
+                                      'Run Verify apply link to check whether the source page still accepts applications.'}
+                                  </p>
+                                </div>
+                              </dl>
+                            </div>
+                          </div>
+                        </div>
 
                         <div className="rounded-md border border-slate-200 bg-white p-4">
                           <ResourceBanner
-                            title="Semantic evidence"
+                            title="Match evidence"
                             state={selectedJobSemanticMatches}
                           />
                           {selectedJobSemanticMatches.data.length ? (
@@ -2717,7 +4059,7 @@ function App() {
                               <div className="flex items-center justify-between gap-3">
                                 <div>
                                   <p className="text-sm font-medium text-slate-900">
-                                    Fit recommendation
+                                    Fit summary
                                   </p>
                                   <p className="mt-1 text-3xl font-semibold text-slate-950">
                                     {selectedJobScore.score}
@@ -2816,17 +4158,17 @@ function App() {
                     ) : (
                       <EmptyState
                         title="No job selected"
-                        body="Pick a role from the left column to inspect its score, CV plan, and message drafts."
+                        body="Pick a role from the left column to review fit, tailored resumes, and outreach drafts."
                       />
                     )}
                   </Panel>
 
                   <div className="grid gap-6 xl:grid-cols-2">
                     <Panel
-                      title="CV artifacts"
-                      subtitle={`${selectedJobCvVersions.data.length} tailoring records for the selected job`}
+                      title="Tailored resumes"
+                      subtitle={`${selectedJobCvVersions.data.length} tailored resume records for the selected role`}
                     >
-                      <ResourceBanner title="CV tailoring plans" state={selectedJobCvVersions} />
+                      <ResourceBanner title="Resume plans" state={selectedJobCvVersions} />
                       {selectedJobCvVersions.data.length ? (
                         <div className="space-y-4">
                           {selectedJobCvVersions.data.map((version) => (
@@ -2947,17 +4289,17 @@ function App() {
                         </div>
                       ) : (
                         <EmptyState
-                          title="No CV versions for this job"
-                          body="Once a tailoring plan exists, the selected bullets, focus areas, and generated file path will appear here."
+                          title="No tailored resumes for this job"
+                          body="When you create a tailored resume plan, the focus areas, audit trail, and generated files will appear here."
                         />
                       )}
                     </Panel>
 
                     <Panel
-                      title="Message drafts"
-                      subtitle={`${approvedDraftCount} approved drafts and ${approvedCvCount} approved CV versions for this role`}
+                      title="Outreach drafts"
+                      subtitle={`${approvedDraftCount} approved drafts and ${approvedCvCount} approved resume versions for this role`}
                     >
-                      <ResourceBanner title="Message drafts" state={selectedJobDrafts} />
+                      <ResourceBanner title="Outreach drafts" state={selectedJobDrafts} />
                       {selectedJobDrafts.data.length ? (
                         <div className="space-y-4">
                           {selectedJobDrafts.data.map((draft) => (
@@ -2980,9 +4322,9 @@ function App() {
                                   {draft.status}
                                 </span>
                               </div>
-                              <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">
-                                {truncate(draft.body, 360)}
-                              </p>
+                              <div className="mt-3 rounded-lg border border-[color:var(--app-border)] bg-white p-3">
+                                <AiText>{truncate(draft.body, 360)}</AiText>
+                              </div>
                               {draft.review_notes ? (
                                 <p className="mt-3 text-sm text-slate-600">
                                   Review: {draft.review_notes}
@@ -2994,11 +4336,12 @@ function App() {
                       ) : (
                         <EmptyState
                           title="No drafts for this job"
-                          body="Drafts appear here after message generation or recruiter reply preparation."
+                          body="Drafts appear here after you generate outreach messages or prepare recruiter replies."
                         />
                       )}
                     </Panel>
                   </div>
+                </div>
                 </div>
               </div>
             ) : null}
@@ -3006,43 +4349,73 @@ function App() {
             {activeSection === 'applications' ? (
               <div className="grid gap-6 xl:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.3fr)]">
                 <Panel
-                  title="Application tracker"
+                  title="Application pipeline"
                   subtitle="Human-reviewed pipeline across found roles, ready-to-apply items, and post-submit follow-up."
                 >
                   <ResourceBanner title="Applications" state={applications} />
-                  <div className="space-y-3">
-                    {applications.data.map((application) => {
-                      const job = jobsById.get(application.job_id)
+                  <div className="mb-3 space-y-3">
+                    <input
+                      value={pipelineSearch}
+                      onChange={(event) => setPipelineSearch(event.target.value)}
+                      placeholder="Search company, role, or status"
+                      className="w-full rounded-2xl border border-[color:var(--app-border)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { id: 'all', label: 'All' },
+                        { id: 'active', label: 'Active' },
+                        { id: 'rejected', label: 'Rejected' },
+                        { id: 'actionable', label: 'Action available' },
+                        { id: 'no_action', label: 'No action' },
+                      ].map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => setPipelineFilter(option.id as PipelineFilter)}
+                          className={`rounded-md px-2.5 py-1.5 text-xs font-medium ring-1 ${
+                            pipelineFilter === option.id
+                              ? 'bg-[color:var(--app-ink)] text-white ring-[color:var(--app-ink)]'
+                              : 'bg-white text-[color:var(--app-muted)] ring-[color:var(--app-border)]'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {applicationRows.map((row) => {
+                      const { application, companyLabel, titleLabel } = row
                       const selected = application.id === effectiveSelectedApplicationId
                       return (
                         <button
                           key={application.id}
                           type="button"
                           onClick={() => setSelectedApplicationId(application.id)}
-                          className={`w-full rounded-md border p-4 text-left transition ${
+                          className={`w-full rounded-lg border p-3 text-left transition ${
                             selected
-                              ? 'border-slate-900 bg-slate-900 text-white'
-                              : 'border-slate-200 bg-slate-50 text-slate-900 hover:bg-slate-100'
+                              ? 'border-[color:var(--app-ink)] bg-[color:var(--app-ink)] text-white'
+                              : 'border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] text-[color:var(--app-ink)] hover:bg-white'
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="text-sm font-medium">
-                                {job?.company?.name ?? 'Unknown company'}
+                                {companyLabel}
                               </p>
                               <p
                                 className={`mt-1 text-sm ${
                                   selected ? 'text-slate-300' : 'text-slate-600'
                                 }`}
                               >
-                                {job?.title ?? 'Unknown role'}
+                                {titleLabel}
                               </p>
                             </div>
                             <span
-                              className={`rounded-sm px-2 py-1 text-xs ${
+                              className={`rounded-md px-2 py-1 text-xs ${
                                 selected
                                   ? 'bg-white/15 text-white'
-                                  : 'bg-slate-200 text-slate-700'
+                                  : 'bg-white text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]'
                               }`}
                             >
                               {application.status}
@@ -3057,13 +4430,31 @@ function App() {
                               ? `Applied ${formatDate(application.applied_at)}`
                               : truncate(application.notes, 110)}
                           </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {row.hasNoReply ? (
+                              <span className={`rounded-md px-2 py-0.5 text-[11px] ${selected ? 'bg-white/15 text-white' : 'bg-amber-100 text-amber-800'}`}>
+                                No-reply
+                              </span>
+                            ) : null}
+                            {row.hasNoActions ? (
+                              <span className={`rounded-md px-2 py-0.5 text-[11px] ${selected ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                                No actions
+                              </span>
+                            ) : null}
+                          </div>
                         </button>
                       )
                     })}
+                    {!applicationRows.length ? (
+                      <EmptyState
+                        title="No applications in this filter"
+                        body="Adjust search or pipeline filter to see more applications."
+                      />
+                    ) : null}
                   </div>
                 </Panel>
 
-                <div className="space-y-6">
+                <div className="space-y-4">
                   <Panel
                     title={selectedApplicationTracker.data?.job_title ?? 'Select an application'}
                     subtitle={
@@ -3078,7 +4469,137 @@ function App() {
                     />
 
                     {selectedApplicationTracker.data ? (
-                      <div className="space-y-5">
+                      <div className="space-y-4">
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteSelectedApplication()}
+                            disabled={operationMutating['delete-application']}
+                            className="crm-button border border-rose-300 bg-white text-xs text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {operationMutating['delete-application'] ? 'Deleting...' : 'Delete application'}
+                          </button>
+                        </div>
+
+                        <div className="crm-subcard p-4">
+                          <p className="crm-label">
+                            Origin
+                          </p>
+                          <p className="mt-2 text-sm text-[color:var(--app-muted)]">
+                            Source: <span className="font-medium text-[color:var(--app-ink)]">{selectedApplicationJob?.source ?? selectedApplication?.job_source ?? 'unknown'}</span>
+                          </p>
+                          {selectedApplicationJob?.source_url ? (
+                            <p className="mt-2 text-sm">
+                              <a
+                                href={selectedApplicationJob.source_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-medium text-[color:var(--app-ink)] underline decoration-[color:var(--app-border-strong)] underline-offset-4"
+                              >
+                                Open original job posting
+                              </a>
+                            </p>
+                          ) : null}
+                          {jobGmailThreadUrl(selectedApplicationJob) ? (
+                            <p className="mt-2 text-sm">
+                              <a
+                                href={jobGmailThreadUrl(selectedApplicationJob) ?? undefined}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-medium text-[color:var(--app-ink)] underline decoration-[color:var(--app-border-strong)] underline-offset-4"
+                              >
+                                Open Gmail thread source
+                              </a>
+                            </p>
+                          ) : null}
+                          {selectedApplicationSourceEmail && gmailThreadUrl(selectedApplicationSourceEmail) ? (
+                            <p className="mt-2 text-sm">
+                              <a
+                                href={gmailThreadUrl(selectedApplicationSourceEmail) ?? undefined}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-medium text-[color:var(--app-ink)] underline decoration-[color:var(--app-border-strong)] underline-offset-4"
+                              >
+                                Open source email
+                              </a>
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-white p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                Application job description
+                              </p>
+                              <p className="mt-2 text-sm leading-6 text-[color:var(--app-muted)]">
+                                Save the full role text here when this application needs better title, role, requirements, reply, or CV tailoring context.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleUpdateApplicationJobDescription()}
+                              disabled={
+                                operationMutating['application-job-description'] ||
+                                !selectedApplication?.job_id ||
+                                applicationJobDescriptionInput.trim().length < 20
+                              }
+                              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {operationMutating['application-job-description']
+                                ? 'Saving...'
+                                : 'Save under this application'}
+                            </button>
+                          </div>
+                          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+                            <textarea
+                              value={applicationJobDescriptionInput}
+                                onChange={(event) => {
+                                  if (selectedApplication) {
+                                    setApplicationJobDescriptionDrafts((current) => ({
+                                      ...current,
+                                      [selectedApplication.id]: event.target.value,
+                                    }))
+                                  }
+                                }}
+                              rows={9}
+                              placeholder="Paste the job description for this exact application."
+                              className="min-h-52 w-full resize-y rounded-2xl border border-[color:var(--app-border-strong)] bg-[color:var(--app-bg-soft)] px-4 py-3 text-sm leading-6 text-[color:var(--app-ink)] outline-none transition focus:border-[color:var(--app-accent)]"
+                            />
+                            <div>
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                  Reply for contact
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (applicationJobReplyInfo) {
+                                      void navigator.clipboard.writeText(applicationJobReplyInfo)
+                                    }
+                                  }}
+                                  disabled={!applicationJobReplyInfo}
+                                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Copy
+                                </button>
+                              </div>
+                              {applicationJobReplyInfo ? (
+                                <div className="mt-3 rounded-lg border border-[color:var(--app-border)] bg-white p-3">
+                                  <AiText>{applicationJobReplyInfo}</AiText>
+                                </div>
+                              ) : null}
+                              <textarea
+                                value={applicationJobReplyInfo}
+                                onChange={(event) => setApplicationJobReplyInfo(event.target.value)}
+                                rows={7}
+                                placeholder="After saving, a message for this application appears here."
+                                className="mt-3 min-h-44 w-full resize-y rounded-2xl border border-[color:var(--app-border-strong)] bg-[color:var(--app-bg-soft)] px-4 py-3 text-sm leading-6 text-[color:var(--app-ink)] outline-none transition focus:border-[color:var(--app-accent)]"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
                         <div className="grid gap-4 md:grid-cols-3">
                           <MetricCard
                             label="Score ready"
@@ -3105,24 +4626,283 @@ function App() {
                           />
                         </div>
 
-                        <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        {selectedApplication?.notes ? (
+                          <div className="rounded-lg border border-[color:var(--app-border)] bg-white p-3">
+                            <p className="crm-label">Latest application message</p>
+                            <div className="mt-2 max-h-40 overflow-auto rounded-md bg-[color:var(--app-bg-soft)] p-3">
+                              <AiText>{cleanDisplayText(selectedApplication.notes)}</AiText>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="crm-subcard p-4">
+                          <p className="crm-label">
                             Current action
                           </p>
-                          <p className="mt-2 text-sm font-medium text-slate-900">
+                          <p className="mt-2 text-sm font-medium text-[color:var(--app-ink)]">
                             {selectedApplicationTracker.data.current_action}
                           </p>
                           {selectedApplicationTracker.data.next_steps.length ? (
-                            <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                            <ul className="mt-3 space-y-2 text-sm text-[color:var(--app-muted)]">
                               {selectedApplicationTracker.data.next_steps.map((step) => (
                                 <li key={step}>- {step}</li>
                               ))}
                             </ul>
                           ) : (
-                            <p className="mt-3 text-sm text-slate-600">
+                            <p className="mt-3 text-sm text-[color:var(--app-muted)]">
                               No additional next steps currently suggested.
                             </p>
                           )}
+                        </div>
+
+                        <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-white p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                Candidate portal
+                              </p>
+                              <p className="mt-2 text-sm leading-6 text-[color:var(--app-muted)]">
+                                Add credentials only for official company or ATS portals. Passwords are encrypted on the backend and never shown again.
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-[color:var(--app-bg-soft)] px-3 py-1 text-xs font-medium text-[color:var(--app-muted)]">
+                              {selectedPortalCredentials.data.length} saved
+                            </span>
+                          </div>
+                          <ResourceBanner
+                            title="Portal credentials"
+                            state={selectedPortalCredentials}
+                          />
+                          <div className="mt-4 grid gap-3 md:grid-cols-3">
+                            <MetricCard
+                              label="Public status"
+                              value={selectedApplication?.latest_portal_status ?? 'Unknown'}
+                              note={`Confidence: ${selectedApplication?.latest_portal_confidence ?? 'not checked'}`}
+                            />
+                            <MetricCard
+                              label="Login required"
+                              value={selectedApplication?.portal_login_required ? 'Yes' : 'No'}
+                              note={selectedApplication?.portal_user_action_required ? 'User action required' : 'No blocker tracked'}
+                            />
+                            <MetricCard
+                              label="Last checked"
+                              value={formatDate(selectedApplication?.latest_portal_checked_at ?? null)}
+                              note="Official page or ATS status"
+                            />
+                          </div>
+                          <div className="mt-4 flex flex-wrap gap-3">
+                            <button
+                              type="button"
+                              onClick={() => void handleRunPortalStatusCheck()}
+                              disabled={operationMutating['portal-status-check']}
+                              className="rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-4 py-2 text-sm font-medium text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {operationMutating['portal-status-check'] ? 'Checking...' : 'Check official status now'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleGeneratePortalFollowUpDraft()}
+                              disabled={operationMutating['portal-follow-up-draft']}
+                              className="rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-4 py-2 text-sm font-medium text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {operationMutating['portal-follow-up-draft'] ? 'Drafting...' : 'Draft recruiter follow-up'}
+                            </button>
+                          </div>
+                          {selectedApplicationRow?.hasNoReply ? (
+                            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-amber-800">
+                                No-reply fallback
+                              </p>
+                              <p className="mt-2 text-sm text-amber-900">
+                                This application is blocked by a no-reply sender. Generate a reusable follow-up and paste it when you find a valid contact.
+                              </p>
+                              <textarea
+                                value={selectedNoReplyDraft}
+                                onChange={(event) => setSelectedNoReplyDraft(event.target.value)}
+                                placeholder="Use Generate no-reply draft to fill this text."
+                                className="mt-3 min-h-32 w-full rounded-2xl border border-amber-200 bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-amber-400"
+                              />
+                              <div className="mt-3 flex flex-wrap gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleGeneratePortalFollowUpDraft()}
+                                  disabled={operationMutating['portal-follow-up-draft']}
+                                  className="rounded-2xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {operationMutating['portal-follow-up-draft'] ? 'Drafting...' : 'Generate no-reply draft'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleCopyNoReplyDraft()}
+                                  className="rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-4 py-2 text-sm font-medium text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)]"
+                                >
+                                  Copy draft
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                          <ResourceBanner
+                            title="Status history"
+                            state={selectedStatusChecks}
+                          />
+                          {selectedStatusChecks.data.length ? (
+                            <div className="mt-4 space-y-2">
+                              {selectedStatusChecks.data.slice(0, 4).map((event) => (
+                                <div
+                                  key={event.id}
+                                  className="rounded-2xl border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] px-4 py-3"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-sm font-semibold text-[color:var(--app-ink)]">
+                                      {event.new_status} - {event.confidence}
+                                    </p>
+                                    <p className="text-xs text-[color:var(--app-muted)]">
+                                      {formatDate(event.checked_at)}
+                                    </p>
+                                  </div>
+                                  <p className="mt-1 text-xs leading-5 text-[color:var(--app-muted)]">
+                                    {event.evidence_summary ?? 'No evidence summary stored.'}
+                                  </p>
+                                  <p className="mt-1 text-xs text-[color:var(--app-muted)]">
+                                    Login required: {event.login_required ? 'yes' : 'no'} - Credentials used: {event.credentials_used ? 'yes' : 'no'} - User action: {event.user_action_required ? 'yes' : 'no'}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                          {selectedPortalCredentials.data.length ? (
+                            <div className="mt-4 space-y-2">
+                              {selectedPortalCredentials.data.map((credential) => (
+                                <div
+                                  key={credential.id}
+                                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] px-4 py-3"
+                                >
+                                  <div>
+                                    <p className="text-sm font-semibold text-[color:var(--app-ink)]">
+                                      {credential.portal_name}
+                                    </p>
+                                    <p className="mt-1 text-xs text-[color:var(--app-muted)]">
+                                      {credential.username} - MFA {credential.mfa_enabled ? 'enabled' : 'not marked'} - Daily check {credential.daily_check_allowed ? 'allowed' : 'off'}
+                                    </p>
+                                    <p className="mt-1 text-xs text-[color:var(--app-muted)]">
+                                      Last checked: {formatDate(credential.last_checked_at)}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeletePortalCredential(credential.id)}
+                                    disabled={operationMutating[`portal-credential-delete-${credential.id}`]}
+                                    className="rounded-2xl border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            <label className="block">
+                              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                                Portal name
+                              </span>
+                              <input
+                                value={portalCredentialForm.portal_name}
+                                onChange={(event) =>
+                                  setPortalCredentialForm((current) => ({
+                                    ...current,
+                                    portal_name: event.target.value,
+                                  }))
+                                }
+                                placeholder="Workday, Greenhouse, company careers"
+                                className="mt-2 w-full rounded-2xl border border-[color:var(--app-border)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                                Portal URL
+                              </span>
+                              <input
+                                value={portalCredentialForm.portal_url}
+                                onChange={(event) =>
+                                  setPortalCredentialForm((current) => ({
+                                    ...current,
+                                    portal_url: event.target.value,
+                                  }))
+                                }
+                                placeholder="https://company.example/careers"
+                                className="mt-2 w-full rounded-2xl border border-[color:var(--app-border)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                                Username or email
+                              </span>
+                              <input
+                                value={portalCredentialForm.username}
+                                onChange={(event) =>
+                                  setPortalCredentialForm((current) => ({
+                                    ...current,
+                                    username: event.target.value,
+                                  }))
+                                }
+                                autoComplete="username"
+                                className="mt-2 w-full rounded-2xl border border-[color:var(--app-border)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                              />
+                            </label>
+                            <label className="block">
+                              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                                Password
+                              </span>
+                              <input
+                                type="password"
+                                value={portalCredentialForm.password}
+                                onChange={(event) =>
+                                  setPortalCredentialForm((current) => ({
+                                    ...current,
+                                    password: event.target.value,
+                                  }))
+                                }
+                                autoComplete="current-password"
+                                className="mt-2 w-full rounded-2xl border border-[color:var(--app-border)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                              />
+                            </label>
+                          </div>
+                          <div className="mt-4 flex flex-wrap gap-4 text-sm text-[color:var(--app-muted)]">
+                            <label className="inline-flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={portalCredentialForm.mfa_enabled}
+                                onChange={(event) =>
+                                  setPortalCredentialForm((current) => ({
+                                    ...current,
+                                    mfa_enabled: event.target.checked,
+                                  }))
+                                }
+                              />
+                              MFA enabled
+                            </label>
+                            <label className="inline-flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={portalCredentialForm.daily_check_allowed}
+                                onChange={(event) =>
+                                  setPortalCredentialForm((current) => ({
+                                    ...current,
+                                    daily_check_allowed: event.target.checked,
+                                  }))
+                                }
+                              />
+                              Allow one daily check
+                            </label>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleSavePortalCredential()}
+                            disabled={operationMutating['portal-credential-save']}
+                            className="mt-4 rounded-2xl bg-[color:var(--app-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {operationMutating['portal-credential-save'] ? 'Saving...' : 'Save encrypted credential'}
+                          </button>
                         </div>
 
                         <div className="flex flex-wrap gap-3">
@@ -3130,7 +4910,7 @@ function App() {
                             type="button"
                             onClick={() => void handleSyncNextActions()}
                             disabled={applicationMutating}
-                            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-2xl bg-[color:var(--app-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {applicationMutating ? 'Working...' : 'Sync next actions'}
                           </button>
@@ -3139,7 +4919,7 @@ function App() {
                               type="button"
                               onClick={() => void handleMarkApplied()}
                               disabled={applicationMutating}
-                              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-4 py-2 text-sm font-medium text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)] disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               Mark applied
                             </button>
@@ -3162,48 +4942,104 @@ function App() {
                       title="Application actions"
                       state={selectedApplicationActions}
                     />
-                    {selectedApplicationActions.data.length ? (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActionFilter('all')}
+                        className={`rounded-2xl px-3 py-1.5 text-xs font-medium ring-1 ${actionFilter === 'all' ? 'bg-[color:var(--app-ink)] text-white ring-[color:var(--app-ink)]' : 'bg-white text-[color:var(--app-muted)] ring-[color:var(--app-border)]'}`}
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActionFilter('possible')}
+                        className={`rounded-2xl px-3 py-1.5 text-xs font-medium ring-1 ${actionFilter === 'possible' ? 'bg-emerald-600 text-white ring-emerald-600' : 'bg-white text-[color:var(--app-muted)] ring-[color:var(--app-border)]'}`}
+                      >
+                        Action possible
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActionFilter('blocked')}
+                        className={`rounded-2xl px-3 py-1.5 text-xs font-medium ring-1 ${actionFilter === 'blocked' ? 'bg-amber-600 text-white ring-amber-600' : 'bg-white text-[color:var(--app-muted)] ring-[color:var(--app-border)]'}`}
+                      >
+                        Action blocked
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActionFilter('none')}
+                        className={`rounded-2xl px-3 py-1.5 text-xs font-medium ring-1 ${actionFilter === 'none' ? 'bg-slate-700 text-white ring-slate-700' : 'bg-white text-[color:var(--app-muted)] ring-[color:var(--app-border)]'}`}
+                      >
+                        No action
+                      </button>
+                    </div>
+                    {appIsRejected ? (
+                      <p className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                        Application is rejected. No outbound recruiter action is expected.
+                      </p>
+                    ) : null}
+                    {appIsWaiting ? (
+                      <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        Application is in waiting state. Actions may depend on new recruiter emails.
+                      </p>
+                    ) : null}
+                    {actionRows.length ? (
                       <div className="space-y-4">
-                        {selectedApplicationActions.data.map((action) => (
+                        {actionRows.map(({ action, blockedReply }) => (
                           <article
                             key={action.id}
-                            className="rounded-md border border-slate-200 bg-slate-50 p-4"
+                            className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-[color:var(--app-surface-strong)] p-4"
                           >
                             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                               <div>
-                                <p className="text-sm font-medium text-slate-900">{action.title}</p>
-                                <p className="mt-1 text-sm text-slate-600">
+                                <p className="text-sm font-medium text-[color:var(--app-ink)]">{action.title}</p>
+                                <p className="mt-1 text-sm text-[color:var(--app-muted)]">
                                   {action.action_type}
                                 </p>
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 <span
-                                  className={`inline-flex rounded-sm px-2 py-1 text-xs font-medium ${getPriorityTone(action.priority)}`}
+                                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getPriorityTone(action.priority)}`}
                                 >
                                   {action.priority}
                                 </span>
                                 <span
-                                  className={`inline-flex rounded-sm px-2 py-1 text-xs font-medium ${getStatusTone(action.status)}`}
+                                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getStatusTone(action.status)}`}
                                 >
                                   {action.status}
                                 </span>
                               </div>
                             </div>
 
-                            <p className="mt-3 text-sm leading-6 text-slate-700">
+                            <p className="mt-3 text-sm leading-6 text-[color:var(--app-muted)]">
                               {truncate(action.details, 220)}
                             </p>
-                            <p className="mt-3 text-xs text-slate-500">
+                            <p className="mt-3 text-xs text-[color:var(--app-muted)]/80">
                               Due {formatDate(action.due_at)} - Updated {formatRelativeDate(action.updated_at)}
                             </p>
 
                             {action.status === 'open' ? (
                               <div className="mt-4 flex flex-wrap gap-3">
+                                {(action.action_type === 'respond_to_recruiter' || action.action_type === 'send_follow_up') ? (
+                                  (() => {
+                                    const blocked = blockedReply
+                                    const emailMutatingKey = action.email_id ?? ''
+                                    return (
+                                  <button
+                                    type="button"
+                                    onClick={() => action.email_id ? void handleCreateGmailReplyDraft(action.email_id as string) : undefined}
+                                    disabled={Boolean(emailMutating[emailMutatingKey]) || blocked}
+                                    className="rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-3 py-2 text-sm font-medium text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)] disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {!action.email_id ? 'No linked email' : blocked ? 'No-reply sender' : emailMutating[emailMutatingKey] ? 'Creating draft...' : 'Reply in Gmail'}
+                                  </button>
+                                    )
+                                  })()
+                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => void handleUpdateAction(action.id, 'completed')}
                                   disabled={actionMutating[action.id]}
-                                  className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="rounded-2xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   {actionMutating[action.id] ? 'Saving...' : 'Mark complete'}
                                 </button>
@@ -3211,7 +5047,7 @@ function App() {
                                   type="button"
                                   onClick={() => void handleUpdateAction(action.id, 'dismissed')}
                                   disabled={actionMutating[action.id]}
-                                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="rounded-2xl border border-[color:var(--app-border-strong)] bg-white px-3 py-2 text-sm font-medium text-[color:var(--app-ink)] transition hover:bg-[color:var(--app-bg-soft)] disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   Dismiss
                                 </button>
@@ -3222,8 +5058,8 @@ function App() {
                       </div>
                     ) : (
                       <EmptyState
-                        title="No actions attached"
-                        body="Sync next actions from the tracker to create follow-ups, interview tasks, or submission steps."
+                        title="No actions in this filter"
+                        body="Switch filter or sync next actions if you expect additional tasks."
                       />
                     )}
                   </Panel>
@@ -3232,291 +5068,27 @@ function App() {
             ) : null}
 
             {activeSection === 'inbox' ? (
-              <Panel
-                title="Job inbox"
-                subtitle="Only application, recruiter, interview, assessment, offer, and other work-related Gmail signals are shown here."
-              >
-                    <div className="mb-3">
-                      <h3 className="text-sm font-semibold">Recent triage audit</h3>
-                      <TriageAuditPanel />
-                    </div>
-                <ResourceBanner title="Emails" state={emails} />
-                <div className="space-y-3">
-                  {inboxEmails.map((email) => (
-                    <article
-                      key={email.id}
-                      className="rounded-md border border-slate-200 bg-slate-50 p-4"
-                    >
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-900">
-                            {email.company_name ?? email.from_name ?? email.from_email}
-                          </p>
-                          <p className="mt-1 text-sm text-slate-600">
-                            {email.subject ?? '(No subject)'}
-                          </p>
-                          <p className="mt-2 text-sm leading-6 text-slate-700">
-                            {truncate(cleanDisplayText(email.snippet ?? email.body_text ?? ''), 260)}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 flex-wrap gap-2 lg:max-w-[280px] lg:justify-end">
-                          <span
-                            className={`inline-flex rounded-sm px-2 py-1 text-xs font-medium ${getPriorityTone(email.urgency)}`}
-                          >
-                            {email.urgency}
-                          </span>
-                          <span className="inline-flex rounded-sm bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
-                            {email.category}
-                          </span>
-                          {email.requires_reply ? (
-                            <span className="inline-flex rounded-sm bg-sky-100 px-2 py-1 text-xs font-medium text-sky-800 ring-1 ring-sky-200">
-                              Reply needed
-                            </span>
-                          ) : null}
-                          {email.gmail_draft_id ? (
-                            <span className="inline-flex rounded-sm bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200">
-                              Gmail draft ready
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="mt-3 flex flex-col gap-1 text-sm text-slate-500 lg:flex-row lg:items-center lg:justify-between">
-                        <span>{email.from_email}</span>
-                        <span>{formatDate(email.received_at ?? email.created_at)}</span>
-                      </div>
-                      <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Email source trace
-                            </p>
-                            <p className="mt-1 text-sm text-slate-700">
-                              Gmail message {email.gmail_message_id ?? 'not available'} from{' '}
-                              {email.gmail_label_ids?.length
-                                ? email.gmail_label_ids.join(', ')
-                                : 'stored inbox sync'}
-                            </p>
-                            {email.gmail_history_id ? (
-                              <p className="mt-1 text-xs text-slate-500">
-                                Gmail history: {email.gmail_history_id}
-                              </p>
-                            ) : null}
-                          </div>
-                          <div className="flex shrink-0 flex-wrap gap-2">
-                            {gmailThreadUrl(email) ? (
-                              <a
-                                href={gmailThreadUrl(email) ?? undefined}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded-md bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-700"
-                              >
-                                Open in Gmail
-                              </a>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="mt-4 rounded-md border border-slate-200 bg-white p-3">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Application link
-                            </p>
-                            <p className="mt-1 text-sm text-slate-700">
-                              {email.application_id
-                                ? `Linked to ${
-                                    jobsById.get(
-                                      applications.data.find(
-                                        (application) => application.id === email.application_id,
-                                      )?.job_id ?? '',
-                                    )?.company?.name ?? 'application'
-                                  }`
-                                : 'This email is not linked to an application yet.'}
-                            </p>
-                          </div>
-                          <div className="flex min-w-0 flex-col gap-2 lg:w-[380px]">
-                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Select application
-                            </label>
-                            <select
-                              value={email.application_id ?? ''}
-                              onChange={(event) =>
-                                void handleLinkEmail(email.id, event.target.value)
-                              }
-                              disabled={emailMutating[email.id]}
-                              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <option value="">Unlinked</option>
-                              {getEmailApplicationOptions(email).map((application) => {
-                                const job = jobsById.get(application.job_id)
-                                return (
-                                  <option key={application.id} value={application.id}>
-                                    {job?.company?.name ?? 'Unknown company'} -{' '}
-                                    {job?.title ?? 'Unknown role'} - {application.status}
-                                  </option>
-                                )
-                              })}
-                            </select>
-                            {emailMutating[email.id] ? (
-                              <p className="text-xs text-slate-500">
-                                Updating link and refreshing tracker...
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                      {email.suggested_action ? (
-                        <p className="mt-3 text-sm text-slate-700">
-                          Suggested action: {email.suggested_action}
-                        </p>
-                      ) : null}
-                    </article>
-                  ))}
-                </div>
-              </Panel>
+              <InboxSection
+                emails={emails}
+                inboxEmails={inboxEmails}
+                applications={applications}
+                jobsById={jobsById}
+                emailMutating={emailMutating}
+                formatDate={formatDate}
+                getPriorityTone={getPriorityTone}
+                gmailThreadUrl={gmailThreadUrl}
+                isNoReplySender={isNoReplySender}
+                handleLinkEmail={handleLinkEmail}
+                handleCreateGmailReplyDraft={handleCreateGmailReplyDraft}
+                getEmailApplicationOptions={getEmailApplicationOptions}
+                Panel={Panel}
+                ResourceBanner={ResourceBanner}
+                TriageAuditPanel={TriageAuditPanel}
+              />
             ) : null}
 
             {activeSection === 'profile' ? (
-              <Panel
-                title="Candidate knowledge base"
-                subtitle="Structured profile extracted from your CV and supporting documents."
-              >
-                <ResourceBanner title="Profile" state={profile} />
-
-                {profile.data ? (
-                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                    <section className="space-y-5">
-                      <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                          Identity and preferences
-                        </h3>
-                        <div className="mt-3 space-y-2 text-sm text-slate-700">
-                          <p>
-                            <span className="font-medium text-slate-900">Name:</span>{' '}
-                            {cleanDisplayName(profile.data.display_name)}
-                          </p>
-                          <p>
-                            <span className="font-medium text-slate-900">Headline:</span>{' '}
-                            {profile.data.headline
-                              ? cleanDisplayText(profile.data.headline)
-                              : 'Not set yet'}
-                          </p>
-                          <p>
-                            <span className="font-medium text-slate-900">Location:</span>{' '}
-                            {profile.data.location
-                              ? cleanDisplayText(profile.data.location)
-                              : 'Not set yet'}
-                          </p>
-                          <p>
-                            <span className="font-medium text-slate-900">
-                              Communication style:
-                            </span>{' '}
-                            {getProfilePreference(
-                              profile.data.preferences,
-                              'communication_style',
-                            ) ?? 'Not extracted yet'}
-                          </p>
-                          <p>
-                            <span className="font-medium text-slate-900">
-                              Work preferences:
-                            </span>{' '}
-                            {getProfilePreference(
-                              profile.data.preferences,
-                              'work_preferences',
-                            ) ?? 'Not extracted yet'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                          Summary
-                        </h3>
-                        <p className="mt-3 text-sm leading-6 text-slate-700">
-                          {profile.data.summary
-                            ? cleanDisplayText(profile.data.summary)
-                            : 'No summary extracted yet.'}
-                        </p>
-                      </div>
-
-                      <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                          Experience
-                        </h3>
-                        <div className="mt-4 space-y-4">
-                          {profile.data.experiences.map((experience) => (
-                            <article key={experience.id}>
-                              <p className="text-sm font-medium text-slate-900">
-                                {experience.title}
-                              </p>
-                              <p className="mt-1 text-sm text-slate-600">
-                                {experience.company} - {experience.location ?? 'Location not set'}
-                              </p>
-                              <p className="mt-1 text-sm text-slate-500">
-                                {experience.start_date} - {experience.end_date}
-                              </p>
-                              <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
-                                {experience.bullets?.map((bullet) => (
-                                  <li key={bullet}>- {bullet}</li>
-                                ))}
-                              </ul>
-                            </article>
-                          ))}
-                        </div>
-                      </div>
-                    </section>
-
-                    <section className="space-y-5">
-                      <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                          Skills
-                        </h3>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {profile.data.skills.map((skill) => (
-                            <span
-                              key={skill.id}
-                              className="rounded-sm bg-white px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
-                            >
-                              {skill.name}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                          Projects
-                        </h3>
-                        <div className="mt-4 space-y-4">
-                          {profile.data.projects.map((project) => (
-                            <article key={project.id}>
-                              <p className="text-sm font-medium text-slate-900">
-                                {project.name}
-                              </p>
-                              <p className="mt-1 text-sm text-slate-600">
-                                {project.description}
-                              </p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {project.technologies?.map((technology) => (
-                                  <span
-                                    key={technology}
-                                    className="rounded-sm bg-white px-2 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
-                                  >
-                                    {technology}
-                                  </span>
-                                ))}
-                              </div>
-                              <p className="mt-3 text-sm leading-6 text-slate-700">
-                                {project.impact}
-                              </p>
-                            </article>
-                          ))}
-                        </div>
-                      </div>
-                    </section>
-                  </div>
-                ) : null}
-              </Panel>
+              <ProfileSection profile={profile} Panel={Panel} ResourceBanner={ResourceBanner} />
             ) : null}
           </main>
         </div>
@@ -3526,3 +5098,4 @@ function App() {
 }
 
 export default App
+

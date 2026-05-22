@@ -1,0 +1,23 @@
+{
+  "id": "c712982d-e2ea-4bfc-a839-aa0f8c0b20c6",
+  "timestamp": "2026-05-19T16:24:51.619331Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24310,
+  "output_len": 388,
+  "estimated_input_tokens": 6202,
+  "estimated_output_tokens": 97,
+  "estimated_total_tokens": 6299,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No direct action required; it's a marketing newsletter.",
+    "reasoning": "The email is a community newsletter with events and sessions; no mention of a candidate's job application, recruiter communication, or pending documents."
+  }
+}

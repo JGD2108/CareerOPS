@@ -1,0 +1,23 @@
+{
+  "id": "885dd8f5-bacf-4391-9ed3-f05f363b0949",
+  "timestamp": "2026-05-19T16:29:58.313272Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 737,
+  "output_len": 598,
+  "estimated_input_tokens": 309,
+  "estimated_output_tokens": 149,
+  "estimated_total_tokens": 458,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "application_confirmation",
+    "company_name": "Urrly",
+    "role_hint": "AI-Enabled Software Engineer",
+    "status_hint": "Recruiter Replied",
+    "urgency": "2 days or less",
+    "requires_reply": false,
+    "suggested_action": "No immediate action required; monitor for future updates from the recruiter.",
+    "reasoning": "Recruiter acknowledged receipt of the candidate's application for the AI-Enabled Software Engineer role at Urrly and indicated a follow-up/update within 2 days; this is an application-related email (not marketing) and represents a recruiter follow-up/acknowledgement."
+  }
+}

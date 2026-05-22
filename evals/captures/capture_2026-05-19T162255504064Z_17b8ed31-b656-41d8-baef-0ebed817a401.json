@@ -1,0 +1,23 @@
+{
+  "id": "17b8ed31-b656-41d8-baef-0ebed817a401",
+  "timestamp": "2026-05-19T16:22:55.504064Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 22425,
+  "output_len": 386,
+  "estimated_input_tokens": 5731,
+  "estimated_output_tokens": 96,
+  "estimated_total_tokens": 5827,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Devpost",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "no_action_needed",
+    "reasoning": "Marketing email about a hackathon and partner details; not related to a job application, recruiter interaction, interview, assessment, or other career-search actions."
+  }
+}

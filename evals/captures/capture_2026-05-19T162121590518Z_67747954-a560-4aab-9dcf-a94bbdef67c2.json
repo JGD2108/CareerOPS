@@ -1,0 +1,23 @@
+{
+  "id": "67747954-a560-4aab-9dcf-a94bbdef67c2",
+  "timestamp": "2026-05-19T16:21:21.590518Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24341,
+  "output_len": 460,
+  "estimated_input_tokens": 6210,
+  "estimated_output_tokens": 115,
+  "estimated_total_tokens": 6325,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Sezzle; Discovery Partners",
+    "role_hint": "Junior Software Engineer; Desarrollador de Salesforce",
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "Mark as not relevant; this is a marketing/job-alert digest.",
+    "reasoning": "This is a LinkedIn job alert digest with multiple job listings and no direct reference to the candidate's applications or recruiter communications."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "1c287eb1-2dab-4c39-ae94-dc326f0ccc13",
+  "timestamp": "2026-05-19T16:25:58.903289Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 6375,
+  "output_len": 373,
+  "estimated_input_tokens": 1718,
+  "estimated_output_tokens": 93,
+  "estimated_total_tokens": 1812,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "/",
+    "requires_reply": false,
+    "suggested_action": "No action needed",
+    "reasoning": "LinkedIn connection acceptance notification; not related to a job application, recruiter outreach, interview, assessment, rejection, offer, documents requested, or form pending."
+  }
+}

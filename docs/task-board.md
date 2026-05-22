@@ -89,6 +89,15 @@
 
 - [x] Add raw_jobs table for source payload storage
 - [x] Add public API connectors for Greenhouse, Lever, and Ashby
+- [x] Add Phase 2 job description resolver for incomplete jobs using configured Greenhouse, Lever, and Ashby public ATS sources
+- [x] Store description resolution attempts with confidence, status, source URL, and evidence metadata
+- [x] Keep LinkedIn/Gmail alerts as partial discovery signals until an ATS/manual description is resolved
+- [x] Add Phase 3 manual official URL resolver with LinkedIn/auth/CAPTCHA/low-quality rejection rules
+- [x] Add conservative company careers fallback under known official company domains only
+- [x] Add manual review UX for medium-confidence candidates and full resolution attempt history
+- [x] Manual QA checklist: unresolved LinkedIn jobs show Resolve description; ATS failure allows manual official URL; manual URL success enables final scoring/CV/messages; LinkedIn URLs show a clear rejection; resolution history is visible; medium-confidence candidates require user approval
+- [x] Add hardening QA doc at `docs/job-description-resolution-qa.md` with local scenarios and safe seed data
+- [x] Harden manual URL overwrite behavior so high-quality resolved jobs are not replaced accidentally
 - [x] Add filtering by role keywords, locations, seniority, and work mode
 - [x] Deduplicate normalized jobs against existing records
 - [x] Add discovery endpoint and raw job listing endpoint

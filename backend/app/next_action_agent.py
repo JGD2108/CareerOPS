@@ -179,7 +179,7 @@ def _email_action_spec(email: Email) -> tuple[str, ActionType, str, str, str, da
             f"email:{email.id}:recruiter_follow_up",
             ActionType.RESPOND_TO_RECRUITER,
             "Respond to recruiter follow-up",
-            f"Review the recruiter follow-up from {email.company_name or email.from_email} and send a reply.",
+            f"Review the recruiter follow-up from {email.company_name or email.from_email} and create a follow-up reply in the same language.",
             "normal",
             now + timedelta(days=2),
         )
@@ -277,6 +277,7 @@ def sync_next_actions(db: Session, application_id: UUID) -> dict | None:
                 details="No reply has been tracked for 7+ days. Consider a concise follow-up.",
                 priority="normal",
                 due_at=_utcnow() + timedelta(days=1),
+                email_id=latest_email.id if latest_email else None,
             )
 
     # Email-driven actions.

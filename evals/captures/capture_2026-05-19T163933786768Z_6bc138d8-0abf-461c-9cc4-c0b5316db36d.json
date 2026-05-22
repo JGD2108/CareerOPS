@@ -1,0 +1,23 @@
+{
+  "id": "6bc138d8-0abf-461c-9cc4-c0b5316db36d",
+  "timestamp": "2026-05-19T16:39:33.786768Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 3695,
+  "output_len": 315,
+  "estimated_input_tokens": 1048,
+  "estimated_output_tokens": 78,
+  "estimated_total_tokens": 1127,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action needed",
+    "reasoning": "Marketing/account activity email about Dream Job feature; not tied to any specific application or recruiter activity."
+  }
+}

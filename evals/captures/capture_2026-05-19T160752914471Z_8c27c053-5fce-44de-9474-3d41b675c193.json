@@ -1,0 +1,23 @@
+{
+  "id": "8c27c053-5fce-44de-9474-3d41b675c193",
+  "timestamp": "2026-05-19T16:07:52.914471Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 286,
+  "output_len": 376,
+  "estimated_input_tokens": 196,
+  "estimated_output_tokens": 94,
+  "estimated_total_tokens": 290,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "offer",
+    "company_name": null,
+    "role_hint": "Senior Platform Engineer",
+    "status_hint": "Offer",
+    "urgency": "",
+    "requires_reply": true,
+    "suggested_action": "Review the attached offer letter and prepare a response (accept, decline, or request clarifications).",
+    "reasoning": "The email contains an official job offer for a Senior Platform Engineer."
+  }
+}

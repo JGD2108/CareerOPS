@@ -1,0 +1,23 @@
+{
+  "id": "f7452252-6da2-446b-a5ac-3ba4fbf48b11",
+  "timestamp": "2026-05-19T16:32:35.212707Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24334,
+  "output_len": 404,
+  "estimated_input_tokens": 6208,
+  "estimated_output_tokens": 101,
+  "estimated_total_tokens": 6309,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "Mark as not relevant; ignore for candidate job search.",
+    "reasoning": "LinkedIn Job Alerts digest containing multiple generic job postings; not a direct application, recruiter follow-up, or interview-related communication."
+  }
+}

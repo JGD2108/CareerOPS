@@ -13,6 +13,9 @@ from app.models import MessageDraftType
 from app.models import SourceType
 from app.models import JobRecommendation
 from app.models import NotificationChannel
+from app.models import AgentRunStatus
+from app.models import PortalCheckConfidence
+from app.models import PublicJobStatus
 
 
 class CompanyRead(BaseModel):
@@ -35,6 +38,10 @@ class JobCreate(BaseModel):
     work_mode: str | None = Field(default=None, max_length=100)
     seniority: str | None = Field(default=None, max_length=100)
     source: str = Field(default="manual", max_length=100)
+    posted_at: datetime | None = None
+    application_deadline: datetime | None = None
+    availability_status: str = Field(default="unknown", max_length=50)
+    availability_reason: str | None = None
 
 
 class JobRead(BaseModel):
@@ -46,6 +53,21 @@ class JobRead(BaseModel):
     work_mode: str | None
     seniority: str | None
     description: str
+    posted_at: datetime | None
+    application_deadline: datetime | None
+    availability_status: str
+    availability_reason: str | None
+    availability_checked_at: datetime | None
+    description_status: str
+    description_quality: str
+    description_source: str | None
+    fetch_status: str
+    resolved_description: str | None
+    resolved_description_html: str | None
+    resolved_description_url: str | None
+    resolved_at: datetime | None
+    resolution_confidence: float | None
+    resolution_notes: str | None
     raw_payload: dict | None
     source_trace: dict | None
     company: CompanyRead | None
@@ -74,10 +96,98 @@ class ApplicationRead(BaseModel):
     id: UUID
     job_id: UUID
     status: ApplicationStatus
+    job_title: str | None = None
+    company_name: str | None = None
+    job_source: str | None = None
     notes: str | None
     applied_at: datetime | None
+    latest_portal_status: str | None = None
+    latest_portal_confidence: str | None = None
+    latest_portal_checked_at: datetime | None = None
+    portal_login_required: bool = False
+    portal_user_action_required: bool = False
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PortalCredentialCreate(BaseModel):
+    portal_name: str = Field(min_length=2, max_length=255)
+    portal_url: HttpUrl
+    username: str = Field(min_length=2, max_length=320)
+    password: str = Field(min_length=1, max_length=500)
+    mfa_enabled: bool = False
+    daily_check_allowed: bool = False
+
+
+class PortalCredentialUpdate(BaseModel):
+    portal_name: str | None = Field(default=None, min_length=2, max_length=255)
+    portal_url: HttpUrl | None = None
+    username: str | None = Field(default=None, min_length=2, max_length=320)
+    password: str | None = Field(default=None, min_length=1, max_length=500)
+    mfa_enabled: bool | None = None
+    daily_check_allowed: bool | None = None
+
+
+class PortalCredentialRead(BaseModel):
+    id: UUID
+    application_id: UUID
+    company_id: UUID | None
+    portal_name: str
+    portal_url: str
+    username: str
+    mfa_enabled: bool
+    daily_check_allowed: bool
+    last_checked_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgentRunRead(BaseModel):
+    id: UUID
+    agent_type: str
+    trigger_type: str
+    status: AgentRunStatus
+    applications_checked: int
+    changes_detected: int
+    error_message: str | None
+    started_at: datetime
+    finished_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ApplicationStatusCheckEventRead(BaseModel):
+    id: UUID
+    application_id: UUID
+    agent_run_id: UUID | None
+    source_url: str | None
+    previous_status: str | None
+    new_status: str
+    public_job_status: PublicJobStatus
+    evidence_summary: str | None
+    confidence: PortalCheckConfidence
+    login_required: bool
+    credentials_used: bool
+    user_action_required: bool
+    event_metadata: dict | None
+    checked_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ModelUsageLogRead(BaseModel):
+    id: UUID
+    agent_run_id: UUID | None
+    task_type: str
+    model: str
+    input_tokens: int | None
+    output_tokens: int | None
+    estimated_cost: float | None
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -223,6 +333,97 @@ class JobFitAnalyzeResponse(BaseModel):
     job: JobRead
     score: JobScoreRead
     application: ApplicationRead | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class JobScoreRequest(BaseModel):
+    preliminary: bool = False
+
+
+class JobDescriptionIngestRequest(BaseModel):
+    description: str = Field(min_length=20)
+    title: str | None = Field(default=None, min_length=2, max_length=255)
+    company_name: str | None = Field(default=None, min_length=2, max_length=255)
+    source_url: HttpUrl | None = None
+    location: str | None = Field(default=None, max_length=255)
+    work_mode: str | None = Field(default=None, max_length=100)
+    seniority: str | None = Field(default=None, max_length=100)
+    create_application: bool = True
+
+
+class JobDescriptionUpdateRequest(BaseModel):
+    description: str = Field(min_length=20)
+    title: str | None = Field(default=None, min_length=2, max_length=255)
+    company_name: str | None = Field(default=None, min_length=2, max_length=255)
+    source_url: HttpUrl | None = None
+    location: str | None = Field(default=None, max_length=255)
+    work_mode: str | None = Field(default=None, max_length=100)
+    seniority: str | None = Field(default=None, max_length=100)
+    rescore: bool = True
+
+
+class ManualJobDescriptionRequest(BaseModel):
+    description: str = Field(min_length=20)
+    source_url: HttpUrl | None = None
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class ManualJobUrlRequest(BaseModel):
+    url: HttpUrl
+
+
+class JobDescriptionResolutionAttemptRead(BaseModel):
+    id: UUID
+    job_id: UUID
+    attempted_source: str
+    attempted_url: str | None
+    status: str
+    confidence: float | None
+    reason: str | None
+    raw_response_ref: str | None
+    error_message: str | None
+    metadata: dict | None = Field(default=None, validation_alias="attempt_metadata")
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ManualJobDescriptionResponse(BaseModel):
+    job: JobRead
+    attempt: JobDescriptionResolutionAttemptRead
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class JobDescriptionResolveResponse(BaseModel):
+    job_id: UUID
+    status: str
+    description_status: str
+    description_source: str | None
+    description_quality: str
+    resolved_description_url: str | None
+    confidence: float | None
+    notes: str
+    attempts: list[JobDescriptionResolutionAttemptRead] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ResolvePendingDescriptionsResponse(BaseModel):
+    processed_count: int
+    resolved_count: int
+    needs_manual_review_count: int
+    not_found_count: int
+    error_count: int
+    results: list[dict] = []
+
+
+class JobDescriptionIngestResponse(BaseModel):
+    job: JobRead
+    score: JobScoreRead | None = None
+    application: ApplicationRead | None = None
+    reply_info: str
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -432,10 +633,13 @@ class SemanticMatchRead(BaseModel):
 
 
 class GmailStatusRead(BaseModel):
+    oauth_configured: bool
     credentials_file_exists: bool
     token_file_exists: bool
     authenticated: bool
     scopes: list[str]
+    credentials_path: str
+    token_path: str
 
 
 class GmailSyncRequest(BaseModel):

@@ -1,0 +1,23 @@
+{
+  "id": "c8fc60b5-68d8-404e-951f-0188a9a86618",
+  "timestamp": "2026-05-19T16:31:35.264401Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 7401,
+  "output_len": 385,
+  "estimated_input_tokens": 1975,
+  "estimated_output_tokens": 96,
+  "estimated_total_tokens": 2071,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "MillerKnoll",
+    "role_hint": "Manhattan Active SCALE Software Engineer - Retail",
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action; marketing job alert.",
+    "reasoning": "Marketing recruitment email with job listings; not tied to your application or job search progress."
+  }
+}

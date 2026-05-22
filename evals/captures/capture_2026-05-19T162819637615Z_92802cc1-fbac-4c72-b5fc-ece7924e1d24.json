@@ -1,0 +1,23 @@
+{
+  "id": "92802cc1-fbac-4c72-b5fc-ece7924e1d24",
+  "timestamp": "2026-05-19T16:28:19.637615Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24355,
+  "output_len": 432,
+  "estimated_input_tokens": 6213,
+  "estimated_output_tokens": 108,
+  "estimated_total_tokens": 6321,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "job_alert",
+    "company_name": "Crossing Hurdles",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "Open the saved job reminder on LinkedIn and view/apply if interested.",
+    "reasoning": "LinkedIn notification about a saved job reminder for Software Engineer at Crossing Hurdles; it is a job alert rather than an application or recruiter communication."
+  }
+}

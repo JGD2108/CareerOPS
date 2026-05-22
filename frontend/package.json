@@ -8,7 +8,8 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "desktop:dev": "concurrently -k -n vite,electron -c cyan,magenta \"npm:dev\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "electron": "npm run desktop:dev",
+    "desktop:dev": "concurrently -k -n vite,electron -c cyan,magenta \"npm:dev\" \"wait-on http://localhost:5173 && electron .\"",
     "desktop:build": "npm run build && electron-builder --dir --win --x64 -c.win.signAndEditExecutable=false -c.npmRebuild=false",
     "desktop:installer": "npm run build && electron-builder --win --x64 -c.win.signAndEditExecutable=false -c.npmRebuild=false",
     "build": "tsc -b && vite build",

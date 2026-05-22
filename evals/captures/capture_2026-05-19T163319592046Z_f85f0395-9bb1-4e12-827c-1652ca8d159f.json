@@ -1,0 +1,23 @@
+{
+  "id": "f85f0395-9bb1-4e12-827c-1652ca8d159f",
+  "timestamp": "2026-05-19T16:33:19.592046Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 22425,
+  "output_len": 366,
+  "estimated_input_tokens": 5731,
+  "estimated_output_tokens": 91,
+  "estimated_total_tokens": 5822,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No action needed for job search; you may ignore or unsubscribe if not interested.",
+    "reasoning": "Marketing promotional email about hackathon; not related to job applications or recruiter communications."
+  }
+}

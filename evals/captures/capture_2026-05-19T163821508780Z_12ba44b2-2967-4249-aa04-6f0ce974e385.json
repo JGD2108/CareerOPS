@@ -1,0 +1,23 @@
+{
+  "id": "12ba44b2-2967-4249-aa04-6f0ce974e385",
+  "timestamp": "2026-05-19T16:38:21.508780Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 3939,
+  "output_len": 386,
+  "estimated_input_tokens": 1109,
+  "estimated_output_tokens": 96,
+  "estimated_total_tokens": 1206,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "application_confirmation",
+    "company_name": "Rhenus",
+    "role_hint": null,
+    "status_hint": "Applied",
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action needed; await further updates from the recruiter.",
+    "reasoning": "Acknowledgement email confirming receipt of the application and that it is under review; no immediate action required."
+  }
+}

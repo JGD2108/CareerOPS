@@ -1,0 +1,23 @@
+{
+  "id": "f92119c4-07d3-4654-8d5c-d02bdf4bfb0e",
+  "timestamp": "2026-05-19T16:34:00.686690Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24333,
+  "output_len": 406,
+  "estimated_input_tokens": 6208,
+  "estimated_output_tokens": 101,
+  "estimated_total_tokens": 6309,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "none",
+    "reasoning": "This is a marketing/newsletter email about AI prompts and industry news. It does not reference a job application, recruiter, interview, assessment, rejection, offer, documents requested, or form pending."
+  }
+}

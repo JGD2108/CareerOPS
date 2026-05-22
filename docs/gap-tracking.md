@@ -1,6 +1,6 @@
 # CareerOps Agent Gap Tracking
 
-Updated: 2026-05-18
+Updated: 2026-05-22
 
 This table tracks the audit gaps against the current implementation. It is intentionally strict: a feature is only "closed" when it exists in code and has a way to verify it locally.
 
@@ -18,7 +18,8 @@ This table tracks the audit gaps against the current implementation. It is inten
 | Medium | CV audit trail in UI | Partial | CV versions store `changes`; dashboard now shows top change reasons and sources. | Add full evidence drill-down per bullet/skill. |
 | Medium | Gmail drafts | Partial | Gmail classification and suggested actions exist; automatic sending is intentionally blocked. | Create Gmail draft creation behind explicit user approval. |
 | Medium | Approval UI | Partial | The app exposes review/approve state, but generated artifacts need clearer approve/reject controls. | Add a dedicated review panel for CVs, drafts, and actions. |
-| Medium | Job discovery from LinkedIn | Safe alternative implemented | Direct LinkedIn scraping/API is not implemented because it can violate platform rules. LinkedIn job alert emails are parsed through Gmail, deduplicated, stored, traced, and auto-scored. | Add more email fixtures for Spanish/English LinkedIn variants. |
+| Medium | Job discovery from LinkedIn, Glassdoor, Computrabajo, and Workday | Safe alternative implemented | Direct scraping/API is not implemented for these sources because it can violate platform rules. Job alert emails from LinkedIn, Glassdoor, Computrabajo, and Workday are parsed through Gmail, deduplicated, stored, and traced. LinkedIn alert jobs are marked partial until resolved from ATS/manual sources. | Add more email fixtures for Spanish/English variants and additional job-board senders. |
+| Medium | Incomplete job descriptions from Gmail alerts | Hardened | `jobs` tracks description status/quality/source and resolver attempts. ATS matching remains first. Manual official URL resolution and conservative company careers lookup can fetch public HTML only, reject LinkedIn/auth/session/CAPTCHA/low-quality pages, and require user approval for medium-confidence candidates. `docs/job-description-resolution-qa.md` documents local QA scenarios and seed data. LinkedIn remains Gmail-only discovery with no login automation or authenticated scraping. | Add more known company ATS board mappings as the user verifies official sources. |
 | Medium | App authentication before deploy | Partial | Optional single-user API key auth exists via `APP_AUTH_ENABLED`, `APP_API_KEY`, and frontend `VITE_CAREEROPS_API_KEY`. | For public use, replace with full OAuth/session auth. |
 | Medium | Gmail authentication UX | Closed for local MVP | Dashboard Setup includes a Gmail OAuth button that calls the local desktop OAuth flow and refreshes Gmail status. | For cloud deployment, add a web OAuth redirect flow. |
 | Low | Portfolio documentation | Partial | README, `ARCHITECTURE.md`, `DEPLOYMENT.md`, task board, and gap tracking exist. | Add demo script and interview talking points. |

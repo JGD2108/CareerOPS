@@ -70,6 +70,13 @@ class AIEmailTriage(BaseModel):
     reasoning: str = Field(min_length=1)
 
 
+class AILinkedInApplicationExtraction(BaseModel):
+    company_name: str | None = Field(default=None, max_length=255)
+    role_title: str | None = Field(default=None, max_length=255)
+    confidence: int = Field(default=0, ge=0, le=100)
+    evidence_span: str | None = Field(default=None, max_length=500)
+
+
 class AICVExperienceBullet(BaseModel):
     company: str = Field(min_length=1, max_length=255)
     title: str = Field(min_length=1, max_length=255)

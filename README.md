@@ -22,6 +22,7 @@ CareerOps is now a local-first desktop MVP. The app runs as an Electron desktop 
 - Document ingestion for CV, LinkedIn exports, LaTeX templates, PDF, DOCX, TXT, and Markdown.
 - LangGraph/OpenAI-backed agents for profile ingestion, email triage, and CV planning.
 - Job discovery through Greenhouse, Lever, Ashby, and safe LinkedIn/Gmail alert ingestion.
+- Job description resolution for incomplete Gmail/LinkedIn alert jobs using public Greenhouse, Lever, and Ashby postings with conservative confidence thresholds.
 - Gmail monitoring with incremental sync, classification, source traceability, and draft generation gates.
 - Job scoring with evidence, risks, and recommendations.
 - LaTeX/PDF CV generation using verified profile evidence only.
@@ -113,6 +114,29 @@ npm run desktop:build
 6. Return to CareerOps. The app polls local FastAPI and unlocks when the token is stored.
 
 CareerOps uses Gmail readonly/compose scopes and does not send email automatically.
+
+## Job Description Resolution
+
+LinkedIn is used only as a Gmail discovery signal. Google Auth does not grant LinkedIn access, and CareerOps does not collect LinkedIn credentials, store LinkedIn cookies, automate LinkedIn login, solve CAPTCHAs, or scrape authenticated LinkedIn pages.
+
+When a LinkedIn Gmail alert contains only a title, company, location, and URL, the job is marked `partial_from_email`. Final scoring, CV tailoring, and message drafting stay blocked until a complete description is resolved or pasted manually.
+
+The resolver checks configured public ATS sources first:
+
+- Greenhouse public board API
+- Lever public postings API
+- Ashby public job board API
+
+Resolution uses deterministic matching across title, company, location, work mode, active/open status, and source reliability. Matches at `0.90+` confidence can be accepted automatically. Matches from `0.70` to `0.89` require a very strong title/company/location match; otherwise the job is marked for manual review. Every attempt is stored in `job_description_resolution_attempts`.
+
+Phase 3 adds two human-in-the-loop fallbacks after ATS resolution fails:
+
+- `POST /api/v1/jobs/{job_id}/manual-url` accepts a user-provided official public job URL, rejects LinkedIn and auth/session/token URLs, fetches public HTML with timeouts and a descriptive user agent, blocks login/CAPTCHA-like pages, extracts readable text, and stores successful descriptions as `manually_provided_url` from `manual_url`.
+- The company careers resolver tries a small set of URLs under the company website domain when a company website is known. It does not crawl broadly or use third-party reposting pages. It rejects generic listing pages unless the target role text is specific enough.
+
+Medium-confidence candidates are shown for manual review with source, title, company, location, URL, confidence, and evidence. The user can accept the candidate, reject it, paste a description manually, or add an official job URL. LinkedIn remains Gmail-only discovery; there is no LinkedIn login automation, authenticated scraping, cookie use, Selenium, CAPTCHA bypass, or job-description scraping from LinkedIn.
+
+The final complete states for downstream actions are `resolved_from_ats`, `resolved_from_company_site`, `manually_provided`, and `manually_provided_url`. `needs_manual_review` is a fetch/attempt state, not a complete description state. Final scoring, CV tailoring, and message generation require complete description evidence; preliminary scoring is the only exception. See `docs/job-description-resolution-qa.md` for local QA scenarios and safe seed data.
 
 ## Semantic Matching
 

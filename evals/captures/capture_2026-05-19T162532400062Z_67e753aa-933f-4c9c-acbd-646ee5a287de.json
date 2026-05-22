@@ -1,0 +1,23 @@
+{
+  "id": "67e753aa-933f-4c9c-acbd-646ee5a287de",
+  "timestamp": "2026-05-19T16:25:32.400062Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24350,
+  "output_len": 475,
+  "estimated_input_tokens": 6212,
+  "estimated_output_tokens": 118,
+  "estimated_total_tokens": 6331,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action required; you can unsubscribe if you don't want job alerts.",
+    "reasoning": "This is a LinkedIn job alert digest (marketing/updates) with multiple job listings. It is not a direct application, recruiter follow-up, interview invitation, or other job search action requiring a response."
+  }
+}

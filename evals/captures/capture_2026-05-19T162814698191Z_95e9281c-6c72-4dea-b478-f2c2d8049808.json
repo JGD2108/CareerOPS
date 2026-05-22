@@ -1,0 +1,23 @@
+{
+  "id": "95e9281c-6c72-4dea-b478-f2c2d8049808",
+  "timestamp": "2026-05-19T16:28:14.698191Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24336,
+  "output_len": 306,
+  "estimated_input_tokens": 6209,
+  "estimated_output_tokens": 76,
+  "estimated_total_tokens": 6285,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "Ignore; unsubscribe if desired.",
+    "reasoning": "Marketing/job alert digest not tied to candidate's active application or recruitment process."
+  }
+}

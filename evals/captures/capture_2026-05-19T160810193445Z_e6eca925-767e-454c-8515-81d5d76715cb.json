@@ -1,0 +1,23 @@
+{
+  "id": "e6eca925-767e-454c-8515-81d5d76715cb",
+  "timestamp": "2026-05-19T16:08:10.193445Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 225,
+  "output_len": 331,
+  "estimated_input_tokens": 181,
+  "estimated_output_tokens": 82,
+  "estimated_total_tokens": 264,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "documents_requested",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "normal",
+    "requires_reply": true,
+    "suggested_action": "Prepare and securely send scanned copies of your ID and university transcripts.",
+    "reasoning": "HR is requesting documents related to your application."
+  }
+}

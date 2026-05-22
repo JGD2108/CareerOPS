@@ -1,0 +1,23 @@
+{
+  "id": "f1ed6325-867d-46b1-a488-26e9c3e4152f",
+  "timestamp": "2026-05-19T16:20:44.185818Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 17081,
+  "output_len": 415,
+  "estimated_input_tokens": 4395,
+  "estimated_output_tokens": 103,
+  "estimated_total_tokens": 4499,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "Ignore marketing/newsletter; no action needed.",
+    "reasoning": "Email appears to be a Medium Daily Digest newsletter; contains tech articles not related to job applications, recruiter communications, or interview/assessment processes."
+  }
+}

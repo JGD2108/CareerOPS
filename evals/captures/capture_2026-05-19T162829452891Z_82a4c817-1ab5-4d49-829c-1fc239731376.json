@@ -1,0 +1,23 @@
+{
+  "id": "82a4c817-1ab5-4d49-829c-1fc239731376",
+  "timestamp": "2026-05-19T16:28:29.452891Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24355,
+  "output_len": 428,
+  "estimated_input_tokens": 6213,
+  "estimated_output_tokens": 107,
+  "estimated_total_tokens": 6320,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "job_alert",
+    "company_name": "Scotiabank",
+    "role_hint": "Software Engineer Associate- ScotiaTech",
+    "status_hint": null,
+    "urgency": "informational",
+    "requires_reply": false,
+    "suggested_action": "View job posting on LinkedIn and consider applying.",
+    "reasoning": "LinkedIn saved-job reminder for a Software Engineer Associate role at Scotiabank; relates to the candidate's job search."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "9396ebc4-3f0f-447d-9472-cd35c213d198",
+  "timestamp": "2026-05-19T16:39:26.131884Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 13758,
+  "output_len": 330,
+  "estimated_input_tokens": 3564,
+  "estimated_output_tokens": 82,
+  "estimated_total_tokens": 3647,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "Jenova AI",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "No action required; this is a marketing newsletter.",
+    "reasoning": "Marketing newsletter about product updates; not related to job applications or career search."
+  }
+}

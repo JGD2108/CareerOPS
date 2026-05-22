@@ -1,0 +1,23 @@
+{
+  "id": "9697fb59-900e-4991-96dd-f7903517e60a",
+  "timestamp": "2026-05-19T16:20:58.233529Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 5398,
+  "output_len": 411,
+  "estimated_input_tokens": 1474,
+  "estimated_output_tokens": 102,
+  "estimated_total_tokens": 1577,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "job_alert",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "",
+    "requires_reply": false,
+    "suggested_action": "Review the listed job opportunities and decide which ones to explore or apply to.",
+    "reasoning": "This is a job alert notification listing several open roles; it does not reference a specific application or recruiter interaction."
+  }
+}

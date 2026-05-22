@@ -1,0 +1,23 @@
+{
+  "id": "de7ab8b9-09f7-47b0-b002-451cb15779fc",
+  "timestamp": "2026-05-19T16:27:05.509064Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 24331,
+  "output_len": 405,
+  "estimated_input_tokens": 6207,
+  "estimated_output_tokens": 101,
+  "estimated_total_tokens": 6309,
+  "parsed": {
+    "relevant_to_careerops": true,
+    "category": "job_alert",
+    "company_name": "Emapta Global",
+    "role_hint": "Software Developer",
+    "status_hint": null,
+    "urgency": "normal",
+    "requires_reply": false,
+    "suggested_action": "View the job posting and decide whether to apply.",
+    "reasoning": "This is a LinkedIn job alert digest for a Software Developer role, which is directly relevant to the candidate's job search."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "18cf580c-73fa-41e3-bebb-77f886284e47",
+  "timestamp": "2026-05-19T16:07:38.232929Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 187,
+  "output_len": 384,
+  "estimated_input_tokens": 171,
+  "estimated_output_tokens": 96,
+  "estimated_total_tokens": 267,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": "shop.com",
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "Mark as not relevant to careerops and ignore or unsubscribe from marketing emails.",
+    "reasoning": "Marketing email (promotion) unrelated to job search; not a job application, interview, or recruiter communication."
+  }
+}

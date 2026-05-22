@@ -24,10 +24,13 @@ from app.cv_tailoring import (
 )
 from app.discovery_scheduler import scheduler_status
 from app.documents import list_documents as list_stored_documents
+from app.documents import delete_document as delete_stored_document
 from app.documents import store_local_document, store_uploaded_document
 from app.db import get_db
 from app.gmail_integration import (
     authenticate_gmail,
+    backfill_application_roles_from_linked_emails,
+    backfill_linkedin_application_confirmations,
     complete_gmail_web_oauth,
     create_reply_draft,
     gmail_status,
@@ -40,10 +43,24 @@ from app.gmail_integration import (
     sync_linkedin_activity,
     sync_gmail_messages,
     start_gmail_web_oauth,
+    store_gmail_credentials_file,
 )
 from app.next_action_agent import list_actions, list_application_actions, sync_next_actions, update_action_status
 from app.notification_agent import generate_daily_summary, list_notification_summaries
+from app.portal_credentials import (
+    create_portal_credential,
+    delete_portal_credential,
+    list_portal_credentials,
+    update_portal_credential,
+)
+from app.portal_status_agent import (
+    check_application_portal_status,
+    list_status_check_events,
+    run_daily_portal_status_checks,
+)
+from app.portal_message_agent import generate_portal_follow_up_draft
 from app.semantic_embeddings import ensure_job_embedding, rebuild_semantic_embeddings, semantic_matches_for_job
+from app.job_availability import verify_job_availability
 from app.job_discovery import (
     create_discovery_source,
     discover_jobs,
@@ -53,8 +70,17 @@ from app.job_discovery import (
     run_saved_discovery_sources,
     update_discovery_source,
 )
+from app.job_description_resolution import (
+    accept_resolution_candidate,
+    list_resolution_attempts,
+    reject_resolution_candidate,
+    resolve_job_description,
+    resolve_manual_job_url,
+    resolve_pending_descriptions,
+    save_manual_job_description,
+)
 from app.job_fit import list_job_scores, score_job_fit
-from app.job_fit_service import analyze_manual_job
+from app.job_fit_service import analyze_manual_job, ingest_job_description, update_job_from_description
 from app.knowledge_base import find_evidence_for_claim, list_skill_aliases, rebuild_skill_aliases
 from app.langgraph_agents import run_email_triage_agent, run_profile_ingestion_agent, run_recent_unlinked_email_triage_agent
 from app.message_agent import generate_message_drafts, list_message_drafts, review_message_draft
@@ -67,9 +93,11 @@ from app.schemas import (
     ApplicationCreate,
     ApplicationMarkAppliedRequest,
     ApplicationRead,
+    ApplicationStatusCheckEventRead,
     ApplicationTrackerRead,
     ApplicationUpdate,
     ActionRead,
+    AgentRunRead,
     ActionUpdateRequest,
     CandidateProfileRead,
     CVTailoringPlanRead,
@@ -90,25 +118,38 @@ from app.schemas import (
     GmailStatusRead,
     GmailSyncRequest,
     JobCreate,
+    JobDescriptionIngestRequest,
+    JobDescriptionIngestResponse,
+    JobDescriptionResolveResponse,
+    JobDescriptionUpdateRequest,
+    JobDescriptionResolutionAttemptRead,
     JobFitAnalyzeRequest,
     JobFitAnalyzeResponse,
     JobDiscoveryRequest,
     JobDiscoveryResponse,
     JobRead,
     JobScoreRead,
+    JobScoreRequest,
     LinkedInSyncRequest,
     LinkedInSyncResponse,
     LocalDocumentImportRequest,
     MessageDraftGenerateRequest,
     MessageDraftRead,
     MessageDraftReviewRequest,
+    ManualJobDescriptionRequest,
+    ManualJobDescriptionResponse,
+    ManualJobUrlRequest,
     MockEmailIngestRequest,
     NextActionSyncResponse,
     NotificationSummaryRead,
+    PortalCredentialCreate,
+    PortalCredentialRead,
+    PortalCredentialUpdate,
     ProfileAgentRunRequest,
     ProfileSkillAliasRead,
     RawEmailRead,
     RawJobRead,
+    ResolvePendingDescriptionsResponse,
     SchedulerStatusRead,
     SemanticMatchRead,
 )
@@ -139,6 +180,25 @@ def get_job(job_id: UUID, db: Session = Depends(get_db)) -> JobRead:
     return job
 
 
+@router.delete("/jobs/{job_id}")
+def delete_job(job_id: UUID, db: Session = Depends(get_db)) -> dict[str, str]:
+    deleted_job = crud.delete_job(db, job_id)
+    if not deleted_job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return {
+        "message": f"Removed {deleted_job['title']} at {deleted_job['company']} from the workspace.",
+        **deleted_job,
+    }
+
+
+@router.post("/jobs/{job_id}/availability-check", response_model=JobRead)
+def check_job_availability(job_id: UUID, db: Session = Depends(get_db)) -> JobRead:
+    job = verify_job_availability(db, job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return job
+
+
 @router.post("/applications", response_model=ApplicationRead, status_code=status.HTTP_201_CREATED)
 def create_application(payload: ApplicationCreate, db: Session = Depends(get_db)) -> ApplicationRead:
     application = crud.create_application(db, payload)
@@ -164,6 +224,14 @@ def update_application(
     return application
 
 
+@router.delete("/applications/{application_id}")
+def delete_application(application_id: UUID, db: Session = Depends(get_db)) -> dict[str, str]:
+    deleted = crud.delete_application(db, application_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    return {"message": f"Application {deleted['deleted_application_id']} removed from workspace."}
+
+
 @router.get("/applications/{application_id}", response_model=ApplicationTrackerRead)
 def get_application_tracker(application_id: UUID, db: Session = Depends(get_db)) -> ApplicationTrackerRead:
     application = get_application(db, application_id)
@@ -171,6 +239,103 @@ def get_application_tracker(application_id: UUID, db: Session = Depends(get_db))
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
     artifact_state = list_application_artifact_state(db, application.job_id)
     return build_application_summary(application, artifact_state)
+
+
+@router.get("/applications/{application_id}/portal-credentials", response_model=list[PortalCredentialRead])
+def read_application_portal_credentials(
+    application_id: UUID,
+    db: Session = Depends(get_db),
+) -> list[PortalCredentialRead]:
+    if not get_application(db, application_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    return list_portal_credentials(db, application_id)
+
+
+@router.post(
+    "/applications/{application_id}/portal-credentials",
+    response_model=PortalCredentialRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_application_portal_credential(
+    application_id: UUID,
+    payload: PortalCredentialCreate,
+    db: Session = Depends(get_db),
+) -> PortalCredentialRead:
+    try:
+        credential = create_portal_credential(db, application_id, payload)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    if not credential:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    return credential
+
+
+@router.patch("/portal-credentials/{credential_id}", response_model=PortalCredentialRead)
+def patch_portal_credential(
+    credential_id: UUID,
+    payload: PortalCredentialUpdate,
+    db: Session = Depends(get_db),
+) -> PortalCredentialRead:
+    try:
+        credential = update_portal_credential(db, credential_id, payload)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    if not credential:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portal credential not found")
+    return credential
+
+
+@router.delete("/portal-credentials/{credential_id}")
+def remove_portal_credential(credential_id: UUID, db: Session = Depends(get_db)) -> dict[str, str]:
+    if not delete_portal_credential(db, credential_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portal credential not found")
+    return {"message": "Portal credential deleted."}
+
+
+@router.get("/applications/{application_id}/status-checks", response_model=list[ApplicationStatusCheckEventRead])
+def read_application_status_checks(
+    application_id: UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> list[ApplicationStatusCheckEventRead]:
+    if not get_application(db, application_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    return list_status_check_events(db, application_id, limit=limit)
+
+
+@router.post(
+    "/applications/{application_id}/status-checks/run",
+    response_model=ApplicationStatusCheckEventRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def run_application_status_check(
+    application_id: UUID,
+    db: Session = Depends(get_db),
+) -> ApplicationStatusCheckEventRead:
+    event = check_application_portal_status(db, application_id)
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    return event
+
+
+@router.post("/agents/portal-status/run-daily", response_model=AgentRunRead, status_code=status.HTTP_201_CREATED)
+def run_portal_status_daily_agent(db: Session = Depends(get_db)) -> AgentRunRead:
+    return run_daily_portal_status_checks(db)
+
+
+@router.post(
+    "/applications/{application_id}/portal-follow-up-draft",
+    response_model=MessageDraftRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_portal_follow_up_draft(application_id: UUID, db: Session = Depends(get_db)) -> MessageDraftRead:
+    try:
+        draft = generate_portal_follow_up_draft(db, application_id)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    if not draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    return draft
 
 
 @router.post("/applications/{application_id}/sync", response_model=ApplicationTrackerRead)
@@ -215,6 +380,13 @@ def import_local_document(payload: LocalDocumentImportRequest, db: Session = Dep
         return store_local_document(db, source_type=payload.source_type, local_path=payload.local_path)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+
+
+@router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(document_id: UUID, db: Session = Depends(get_db)) -> None:
+    deleted = delete_stored_document(db, document_id)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
 
 
 @router.post("/profile/extract", response_model=CandidateProfileRead)
@@ -264,8 +436,11 @@ def read_triage_audit(limit: int = Query(100, ge=1, le=1000), db: Session = Depe
 
 
 @router.post("/jobs/{job_id}/score", response_model=JobScoreRead)
-def score_job(job_id: UUID, db: Session = Depends(get_db)) -> JobScoreRead:
-    job_score = score_job_fit(db, job_id)
+def score_job(job_id: UUID, payload: JobScoreRequest | None = None, db: Session = Depends(get_db)) -> JobScoreRead:
+    try:
+        job_score = score_job_fit(db, job_id, preliminary=bool(payload.preliminary) if payload else False)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     if not job_score:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -288,6 +463,109 @@ def analyze_job_fit(payload: JobFitAnalyzeRequest, db: Session = Depends(get_db)
             detail="Candidate profile not found. Extract the profile before analyzing jobs.",
         )
     return result
+
+
+@router.post("/jobs/from-description", response_model=JobDescriptionIngestResponse, status_code=status.HTTP_201_CREATED)
+def create_job_from_description(
+    payload: JobDescriptionIngestRequest,
+    db: Session = Depends(get_db),
+) -> JobDescriptionIngestResponse:
+    return ingest_job_description(db, payload)
+
+
+@router.patch("/jobs/{job_id}/description", response_model=JobDescriptionIngestResponse)
+def patch_job_from_description(
+    job_id: UUID,
+    payload: JobDescriptionUpdateRequest,
+    db: Session = Depends(get_db),
+) -> JobDescriptionIngestResponse:
+    result = update_job_from_description(db, job_id, payload)
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return result
+
+
+@router.post("/jobs/{job_id}/manual-description", response_model=ManualJobDescriptionResponse)
+def save_job_manual_description(
+    job_id: UUID,
+    payload: ManualJobDescriptionRequest,
+    db: Session = Depends(get_db),
+) -> ManualJobDescriptionResponse:
+    result = save_manual_job_description(
+        db,
+        job_id,
+        description=payload.description,
+        source_url=str(payload.source_url) if payload.source_url else None,
+        notes=payload.notes,
+    )
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    job, attempt = result
+    return ManualJobDescriptionResponse(job=job, attempt=attempt)
+
+
+@router.post("/jobs/{job_id}/manual-url", response_model=ManualJobDescriptionResponse)
+def resolve_job_manual_url(
+    job_id: UUID,
+    payload: ManualJobUrlRequest,
+    db: Session = Depends(get_db),
+) -> ManualJobDescriptionResponse:
+    result = resolve_manual_job_url(db, job_id, url=str(payload.url))
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    job, attempt = result
+    if attempt.status != "success":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=attempt.reason or "URL rejected")
+    return ManualJobDescriptionResponse(job=job, attempt=attempt)
+
+
+@router.post("/jobs/{job_id}/resolve-description", response_model=JobDescriptionResolveResponse)
+def resolve_job_description_endpoint(job_id: UUID, db: Session = Depends(get_db)) -> JobDescriptionResolveResponse:
+    result = resolve_job_description(db, job_id)
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return result
+
+
+@router.post("/jobs/{job_id}/resolution-attempts/{attempt_id}/accept", response_model=ManualJobDescriptionResponse)
+def accept_job_resolution_candidate(
+    job_id: UUID,
+    attempt_id: UUID,
+    db: Session = Depends(get_db),
+) -> ManualJobDescriptionResponse:
+    try:
+        result = accept_resolution_candidate(db, job_id, attempt_id)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    if not result:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resolution candidate not found")
+    job, attempt = result
+    return ManualJobDescriptionResponse(job=job, attempt=attempt)
+
+
+@router.post("/jobs/{job_id}/resolution-attempts/{attempt_id}/reject", response_model=JobDescriptionResolutionAttemptRead)
+def reject_job_resolution_candidate(
+    job_id: UUID,
+    attempt_id: UUID,
+    db: Session = Depends(get_db),
+) -> JobDescriptionResolutionAttemptRead:
+    attempt = reject_resolution_candidate(db, job_id, attempt_id)
+    if not attempt:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resolution candidate not found")
+    return attempt
+
+
+@router.get("/jobs/{job_id}/resolution-attempts", response_model=list[JobDescriptionResolutionAttemptRead])
+def read_job_resolution_attempts(job_id: UUID, db: Session = Depends(get_db)) -> list[JobDescriptionResolutionAttemptRead]:
+    return list_resolution_attempts(db, job_id)
+
+
+@router.post("/jobs/resolve-pending", response_model=ResolvePendingDescriptionsResponse)
+def resolve_pending_job_descriptions(
+    limit: int = Query(default=10, ge=1, le=25),
+    db: Session = Depends(get_db),
+) -> ResolvePendingDescriptionsResponse:
+    return resolve_pending_descriptions(db, limit=limit)
 
 
 @router.post("/job-discovery/discover", response_model=JobDiscoveryResponse, status_code=status.HTTP_201_CREATED)
@@ -361,6 +639,15 @@ def read_gmail_status() -> GmailStatusRead:
     return gmail_status()
 
 
+@router.post("/gmail/config/upload", response_model=GmailStatusRead, status_code=status.HTTP_201_CREATED)
+async def upload_gmail_credentials(file: UploadFile = File(...)) -> GmailStatusRead:
+    try:
+        content = await file.read()
+        return store_gmail_credentials_file(filename=file.filename or "gmail_credentials.json", content=content)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+
+
 @router.post("/gmail/auth", response_model=GmailStatusRead)
 def run_gmail_auth() -> GmailStatusRead:
     try:
@@ -427,7 +714,9 @@ def sync_gmail(payload: GmailSyncRequest, db: Session = Depends(get_db)) -> list
 @router.post("/gmail/sync-career", response_model=list[EmailRead], status_code=status.HTTP_201_CREATED)
 def sync_career_gmail(db: Session = Depends(get_db)) -> list[EmailRead]:
     try:
-        return sync_career_gmail_messages(db, newer_than_days=180, max_results_per_query=25)
+        synced_emails = sync_career_gmail_messages(db, newer_than_days=365, max_results_per_query=100)
+        sync_linkedin_activity(db, newer_than_days=365, max_results=100)
+        return synced_emails
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     except Exception as error:
@@ -446,6 +735,34 @@ def sync_linkedin(payload: LinkedInSyncRequest, db: Session = Depends(get_db)) -
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     except Exception as error:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"LinkedIn sync failed: {error}") from error
+
+
+@router.post("/linkedin/backfill-application-confirmations", response_model=dict[str, int])
+def backfill_linkedin_confirmations(
+    limit: int = Query(500, ge=1, le=5000),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    try:
+        return backfill_linkedin_application_confirmations(db, limit=limit)
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"LinkedIn backfill failed: {error}",
+        ) from error
+
+
+@router.post("/applications/backfill-roles-from-emails", response_model=dict[str, int])
+def backfill_application_roles(
+    limit: int = Query(1000, ge=1, le=5000),
+    db: Session = Depends(get_db),
+) -> dict[str, int]:
+    try:
+        return backfill_application_roles_from_linked_emails(db, limit=limit)
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Application role backfill failed: {error}",
+        ) from error
 
 
 @router.get("/emails", response_model=list[EmailRead])
@@ -632,7 +949,10 @@ def read_job_semantic_matches(job_id: UUID, db: Session = Depends(get_db)) -> li
 
 @router.post("/jobs/{job_id}/cv-tailoring-plan", response_model=CVTailoringPlanRead, status_code=status.HTTP_201_CREATED)
 def generate_cv_tailoring_plan(job_id: UUID, db: Session = Depends(get_db)) -> CVTailoringPlanRead:
-    plan = create_tailoring_plan(db, job_id)
+    try:
+        plan = create_tailoring_plan(db, job_id)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     if not plan:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

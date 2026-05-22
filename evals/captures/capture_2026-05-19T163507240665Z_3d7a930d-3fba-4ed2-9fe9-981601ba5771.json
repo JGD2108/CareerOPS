@@ -1,0 +1,23 @@
+{
+  "id": "3d7a930d-3fba-4ed2-9fe9-981601ba5771",
+  "timestamp": "2026-05-19T16:35:07.240665Z",
+  "schema_name": "careerops_email_triage",
+  "model": "gpt-5-nano",
+  "system_prompt_len": 500,
+  "user_prompt_len": 12643,
+  "output_len": 297,
+  "estimated_input_tokens": 3285,
+  "estimated_output_tokens": 74,
+  "estimated_total_tokens": 3360,
+  "parsed": {
+    "relevant_to_careerops": false,
+    "category": "other",
+    "company_name": null,
+    "role_hint": null,
+    "status_hint": null,
+    "urgency": "low",
+    "requires_reply": false,
+    "suggested_action": "No action needed",
+    "reasoning": "Marketing newsletter; not related to job applications or recruiter communications."
+  }
+}

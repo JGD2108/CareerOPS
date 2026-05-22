@@ -6,18 +6,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import router
 from app.config import get_settings
 from app.db import check_database_connection
-from app.discovery_scheduler import start_scheduler, stop_scheduler
+from app.discovery_scheduler import (
+    start_scheduler as start_discovery_scheduler,
+    stop_scheduler as stop_discovery_scheduler,
+)
+from app.background_scheduler import (
+    start_scheduler as start_background_scheduler,
+    stop_scheduler as stop_background_scheduler,
+)
+from app.portal_status_scheduler import (
+    start_scheduler as start_portal_status_scheduler,
+    stop_scheduler as stop_portal_status_scheduler,
+)
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    start_scheduler()
+    start_discovery_scheduler()
+    start_background_scheduler()
+    start_portal_status_scheduler()
     try:
         yield
     finally:
-        stop_scheduler()
+        stop_portal_status_scheduler()
+        stop_discovery_scheduler()
+        stop_background_scheduler()
 
 
 app = FastAPI(
