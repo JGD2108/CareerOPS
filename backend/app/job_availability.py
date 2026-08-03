@@ -8,8 +8,11 @@ from uuid import UUID
 import httpx
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.job_page_scraper import scrape_job_page_with_selenium
 from app.models import Job
+
+settings = get_settings()
 
 OPEN_PAGE_PATTERNS = (
     "apply now",
@@ -135,30 +138,31 @@ def verify_job_availability(db: Session, job_id: UUID) -> Job | None:
         db.refresh(job)
         return job
 
-    selenium_result = scrape_job_page_with_selenium(job.source_url)
-    if selenium_result:
-        if selenium_result.description and len(selenium_result.description) > len(job.description or ""):
-            job.description = selenium_result.description
-        if selenium_result.location:
-            job.location = selenium_result.location
-        if selenium_result.posted_at:
-            job.posted_at = selenium_result.posted_at
-        if selenium_result.application_deadline:
-            job.application_deadline = selenium_result.application_deadline
-        job.availability_status = selenium_result.availability_status
-        job.availability_reason = selenium_result.availability_reason
-        raw_payload = dict(job.raw_payload or {})
-        raw_payload.update(
-            {
-                "scraper": selenium_result.scraper,
-                "scraped_source_url": selenium_result.source_url,
-                "scraped_final_url": selenium_result.final_url,
-            }
-        )
-        job.raw_payload = raw_payload
-        db.commit()
-        db.refresh(job)
-        return job
+    if settings.enable_browser_job_checks and "linkedin.com" not in job.source_url.lower():
+        selenium_result = scrape_job_page_with_selenium(job.source_url)
+        if selenium_result:
+            if selenium_result.description and len(selenium_result.description) > len(job.description or ""):
+                job.description = selenium_result.description
+            if selenium_result.location:
+                job.location = selenium_result.location
+            if selenium_result.posted_at:
+                job.posted_at = selenium_result.posted_at
+            if selenium_result.application_deadline:
+                job.application_deadline = selenium_result.application_deadline
+            job.availability_status = selenium_result.availability_status
+            job.availability_reason = selenium_result.availability_reason
+            raw_payload = dict(job.raw_payload or {})
+            raw_payload.update(
+                {
+                    "scraper": selenium_result.scraper,
+                    "scraped_source_url": selenium_result.source_url,
+                    "scraped_final_url": selenium_result.final_url,
+                }
+            )
+            job.raw_payload = raw_payload
+            db.commit()
+            db.refresh(job)
+            return job
 
     try:
         with httpx.Client(

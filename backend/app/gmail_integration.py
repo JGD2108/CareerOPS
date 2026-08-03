@@ -6,6 +6,7 @@ import html as html_lib
 import json
 import os
 import re
+from urllib.parse import urlsplit, urlunsplit
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -27,7 +28,7 @@ from app.ai_schemas import AILinkedInApplicationExtraction
 from app.audit import write_audit_log
 from app.config import get_settings
 from app.job_fit import ensure_job_score
-from app.job_controls import is_job_dismissed
+from app.job_controls import is_excluded_company_name, is_job_dismissed
 from app.job_description_state import PARTIAL_LINKEDIN_NOTES
 from app.job_page_scraper import scrape_job_page_with_selenium
 from app.models import (
@@ -59,6 +60,19 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.compose",
 ]
+
+
+def _normalize_url_for_storage(value: str | None, *, max_length: int = 1000) -> str | None:
+    if not value:
+        return None
+    raw = value.strip()
+    if len(raw) <= max_length:
+        return raw
+    parsed = urlsplit(raw)
+    without_query = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    if len(without_query) <= max_length:
+        return without_query
+    return raw[:max_length]
 
 
 @dataclass
@@ -368,15 +382,21 @@ def _extract_body_text(payload: dict) -> str:
 
 
 def _extract_company_name(from_email: str, from_name: str | None) -> str | None:
+    domain = from_email.split("@")[-1].lower()
+    if domain.endswith(".breezy-mail.com"):
+        company = domain.removesuffix(".breezy-mail.com").split(".")[-1]
+        company = company.replace("-", " ").replace("_", " ").strip()
+        return company.title() if company else None
+
     if from_name and "recruit" not in from_name.lower():
         return from_name.strip()
-    domain = from_email.split("@")[-1].lower()
     generic_domains = [
         "greenhouse-mail.io",
         "icims.com",
         "ashbyhq.com",
         "mail2world.com",
         "lever.co",
+        "breezy-mail.com",
     ]
     if any(item in domain for item in generic_domains):
         return None
@@ -449,6 +469,8 @@ def _classify_email(subject: str | None, body_text: str | None, from_email: str)
             "not selected for",
             "not be selected for",
             "decided to move forward with other candidates",
+            "experience aligned a bit more",
+            "candidates whose experience aligned",
             "pursue other candidates",
             "no longer under consideration",
             "unable to offer",
@@ -814,6 +836,8 @@ def _extract_application_role_company_from_email(email_record: Email) -> tuple[s
     patterns = [
         r"gracias por tu inter[eÃ©]s\s+(?:en\s+)?(?:el\s+)?puesto de\s+(?P<title>.+?)\s+en\s+(?P<company>[^.,]+?)(?:\s+en\s+[A-ZÃÁÉÍÓÚÑ]|[.,]|$)",
         r"thank you for your interest in the\s+(?P<title>.+?)\s+position\s+at\s+(?P<company>[^.,]+?)(?:\s+in\s+[A-Z]|[.,]|$)",
+        r"application for the role of\s+(?P<title>.+?)\s+at\s+(?P<company>[^.,]+?)(?:[.,]|$)",
+        r"apply to the role of\s+(?P<title>.+?)(?:[.,]|$)",
         r"thanks for applying for the\s+(?P<title>.+?)\s+position(?:\s+at\s+(?P<company>[^.,]+?))?(?:[.,]|$)",
         r"your application to\s+(?P<title>.+?)\s+at\s+(?P<company>[^.,]+?)(?:[.,]|$)",
         r"tu solicitud (?:para|a)\s+(?P<title>.+?)\s+en\s+(?P<company>[^.,]+?)(?:[.,]|$)",
@@ -828,6 +852,8 @@ def _extract_application_role_company_from_email(email_record: Email) -> tuple[s
             continue
         if company and len(company) > 100:
             company = ""
+        if "scotiatech" in _normalize_role_text(title):
+            company = "ScotiaTech"
         return title, company or None
     return None, None
 
@@ -936,6 +962,94 @@ def _mark_linked_application_from_confirmation(db: Session, email_record: Email)
     sync_next_actions(db, application.id)
 
 
+def _find_existing_application_for_email_role(
+    db: Session,
+    *,
+    title: str,
+    company: str,
+) -> Application | None:
+    normalized_title = _normalize_role_text(title)
+    normalized_company = _normalize_role_text(company)
+    if not normalized_title or not normalized_company:
+        return None
+
+    applications = list(
+        db.scalars(
+            select(Application)
+            .join(Job, Application.job_id == Job.id)
+            .join(Company, Job.company_id == Company.id)
+            .order_by(Application.updated_at.desc())
+        )
+    )
+    for application in applications:
+        job = application.job
+        job_title = _normalize_role_text(job.title if job else "")
+        job_company = _normalize_role_text(job.company.name if job and job.company else "")
+        if job_title == normalized_title and job_company == normalized_company:
+            return application
+    return None
+
+
+def _create_or_link_application_from_status_email(db: Session, email_record: Email) -> Application | None:
+    if email_record.application_id:
+        return db.get(Application, email_record.application_id)
+    if email_record.category not in {EmailCategory.APPLICATION_CONFIRMATION, EmailCategory.REJECTION}:
+        return None
+
+    title, extracted_company = _extract_application_role_company_from_email(email_record)
+    company = extracted_company or email_record.company_name
+    if not title or not company:
+        return None
+
+    existing_application = _find_existing_application_for_email_role(db, title=title, company=company)
+    if existing_application:
+        email_record.application_id = existing_application.id
+        return existing_application
+
+    description = (
+        "Application tracker entry created from an email status update.\n\n"
+        f"Email subject: {email_record.subject or 'No subject'}\n"
+        f"Sender: {email_record.from_email}\n"
+        f"Snippet: {email_record.snippet or ''}"
+    )
+    job = crud.create_job(
+        db,
+        JobCreate(
+            title=title,
+            company_name=company,
+            description=description,
+            source="email_application_status",
+            availability_status="unknown",
+            availability_reason="Created from an application status email.",
+        ),
+    )
+    application = crud.create_application(
+        db,
+        ApplicationCreate(
+            job_id=job.id,
+            status=ApplicationStatus.FOUND,
+            notes=f"Created automatically from {email_record.category} email: {email_record.subject or 'No subject'}",
+        ),
+    )
+    if not application:
+        return None
+
+    email_record.application_id = application.id
+    write_audit_log(
+        db,
+        event_type="application.created_from_email_status",
+        entity_type="application",
+        entity_id=application.id,
+        details={
+            "email_id": str(email_record.id),
+            "email_category": email_record.category,
+            "title": title,
+            "company": company,
+        },
+    )
+    return application
+
+
 def _extract_job_alert_candidates(email_record: Email, *, source_kind: str) -> list[dict[str, str | None]]:
     if email_record.category != EmailCategory.JOB_ALERT:
         return []
@@ -1039,7 +1153,14 @@ def _create_or_get_linkedin_job(
     email_record: Email,
     application_status: ApplicationStatus | None,
 ) -> tuple[Job, bool, bool, Application | None]:
-    existing_job = _existing_linkedin_job(db, title=title, company=company, source_url=source_url, source=source)
+    normalized_source_url = _normalize_url_for_storage(source_url)
+    existing_job = _existing_linkedin_job(
+        db,
+        title=title,
+        company=company,
+        source_url=normalized_source_url,
+        source=source,
+    )
     job_created = False
     if existing_job:
         normalized_job = existing_job
@@ -1055,7 +1176,7 @@ def _create_or_get_linkedin_job(
                 title=title,
                 company_name=company,
                 description=description,
-                source_url=source_url,
+                source_url=normalized_source_url,
                 source=source,
             ),
         )
@@ -1084,11 +1205,11 @@ def _create_or_get_linkedin_job(
         "email_from": email_record.from_email,
         "email_received_at": email_record.received_at.isoformat() if email_record.received_at else None,
         "email_snippet": _clean_alert_text(email_record.snippet or ""),
-        "source_url": source_url,
+        "source_url": normalized_source_url,
     }
 
-    if source_url and source not in {"linkedin_email_alert", "linkedin_application_email"}:
-        scraped_job = scrape_job_page_with_selenium(source_url)
+    if normalized_source_url and source not in {"linkedin_email_alert", "linkedin_application_email"}:
+        scraped_job = scrape_job_page_with_selenium(normalized_source_url)
         if scraped_job:
             if scraped_job.description and (
                 normalized_job.description.startswith(f"{source_label} email source.") or
@@ -1162,8 +1283,10 @@ def ingest_linkedin_job_alert(db: Session, email_record: Email) -> dict[str, Any
         company = candidate["company"]
         if not title or not company:
             continue
+        if is_excluded_company_name(company):
+            continue
 
-        source_url = candidate["url"]
+        source_url = _normalize_url_for_storage(candidate["url"])
         external_job_id = None
         if source_url:
             id_match = re.search(r"/view/(\d+)", source_url)
@@ -1218,7 +1341,7 @@ def ingest_linkedin_job_alert(db: Session, email_record: Email) -> dict[str, Any
             company_name=company,
             title=title,
             location=None,
-            job_url=source_url,
+            job_url=_normalize_url_for_storage(source_url),
             raw_payload={
                 "email_id": str(email_record.id),
                 "raw_email_id": str(email_record.raw_email_id),
@@ -1449,8 +1572,10 @@ def ingest_linkedin_application_confirmation(db: Session, email_record: Email) -
         company = candidate["company"]
         if not title or not company:
             continue
+        if is_excluded_company_name(company):
+            continue
 
-        source_url = candidate["url"]
+        source_url = _normalize_url_for_storage(candidate["url"])
         external_job_id = None
         if source_url:
             id_match = re.search(r"/view/(\d+)", source_url)
@@ -1491,7 +1616,7 @@ def ingest_linkedin_application_confirmation(db: Session, email_record: Email) -
             if normalized_title and _is_placeholder_application_title(normalized_job.title) and normalized_title != fallback_title:
                 normalized_job.title = normalized_title
             if source_url and not normalized_job.source_url:
-                normalized_job.source_url = source_url
+                normalized_job.source_url = _normalize_url_for_storage(source_url)
             normalized_job.raw_payload = {
                 **(normalized_job.raw_payload or {}),
                 "source_kind": "linkedin_application_email",
@@ -1502,7 +1627,7 @@ def ingest_linkedin_application_confirmation(db: Session, email_record: Email) -
                 "email_subject": email_record.subject,
                 "email_from": email_record.from_email,
                 "email_received_at": email_record.received_at.isoformat() if email_record.received_at else None,
-                "source_url": source_url,
+                "source_url": _normalize_url_for_storage(source_url),
             }
             if _auto_score_job_if_possible(db, normalized_job.id):
                 result["jobs_auto_scored"] += 1
@@ -1525,7 +1650,7 @@ def ingest_linkedin_application_confirmation(db: Session, email_record: Email) -
             company_name=company,
             title=title,
             location=None,
-            job_url=source_url,
+            job_url=_normalize_url_for_storage(source_url),
             raw_payload={
                 "email_id": str(email_record.id),
                 "raw_email_id": str(email_record.raw_email_id),
@@ -1816,7 +1941,10 @@ def apply_email_effects(db: Session, email_record: Email) -> None:
     if email_record.category == EmailCategory.APPLICATION_CONFIRMATION:
         if "linkedin.com" in email_record.from_email.lower():
             ingest_linkedin_application_confirmation(db, email_record)
+        _create_or_link_application_from_status_email(db, email_record)
         _mark_linked_application_from_confirmation(db, email_record)
+    if email_record.category == EmailCategory.REJECTION and not email_record.application_id:
+        _create_or_link_application_from_status_email(db, email_record)
     if email_record.category == EmailCategory.REJECTION and email_record.application_id:
         application = db.get(Application, email_record.application_id)
         if application and application.status != ApplicationStatus.REJECTED:

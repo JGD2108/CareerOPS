@@ -58,6 +58,22 @@ function descriptionStatusLabel(job: Job) {
   return job.description_status.replaceAll('_', ' ')
 }
 
+function normalizeHttpUrl(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 type Action = {
   id: string
   application_id: string
@@ -251,6 +267,71 @@ type JobDiscoveryResponse = {
   matched_jobs: Job[]
 }
 
+type JobDescriptionIngestResponse = {
+  job: Job
+  score: JobScore | null
+  application: Application | null
+  reply_info: string
+}
+
+type PublicSourcePreferences = {
+  github_profile_url: string | null
+  portfolio_urls: string[]
+}
+
+type PublicSourceEnrichmentResponse = {
+  profile: CandidateProfile
+  projects_added: number
+  projects_updated: number
+  failures: Array<{ source_type: string; source_url: string; reason: string }>
+}
+
+type ProfileProjectForm = {
+  name: string
+  description: string
+  technologies: string
+  impact: string
+  project_url: string
+  repo_url: string
+  metric_bullets: string
+}
+
+const EMPTY_PROJECT_FORM: ProfileProjectForm = {
+  name: '',
+  description: '',
+  technologies: '',
+  impact: '',
+  project_url: '',
+  repo_url: '',
+  metric_bullets: '',
+}
+
+function buildPublicSourcePreferences(
+  githubProfileUrl: string,
+  portfolioUrlsText: string,
+): PublicSourcePreferences {
+  const normalizedGithub = normalizeHttpUrl(githubProfileUrl)
+  const normalizedPortfolio = portfolioUrlsText
+    .split('\n')
+    .map((item) => normalizeHttpUrl(item))
+    .filter(Boolean)
+  if (normalizedGithub && !isValidHttpUrl(normalizedGithub)) {
+    throw new Error('GitHub profile must be a valid http/https link.')
+  }
+  for (const url of normalizedPortfolio) {
+    if (!isValidHttpUrl(url)) {
+      throw new Error(`Portfolio URL is invalid: ${url}`)
+    }
+  }
+  if (!normalizedGithub && normalizedPortfolio.length === 0) {
+    throw new Error('Add a GitHub or portfolio link before syncing public sources.')
+  }
+  return {
+    github_profile_url: normalizedGithub || null,
+    portfolio_urls: normalizedPortfolio,
+  }
+}
+
 type ManualJobDescriptionResponse = {
   job: Job
   attempt: JobDescriptionResolutionAttempt
@@ -296,6 +377,13 @@ type GmailOAuthStart = {
   authorization_url: string
   state: string
   redirect_uri: string
+}
+
+type AuthStatus = {
+  enabled: boolean
+  configured: boolean
+  authenticated: boolean
+  mode: string
 }
 
 type DeleteJobResponse = {
@@ -348,6 +436,47 @@ type PortalCredentialForm = {
   mfa_enabled: boolean
   daily_check_allowed: boolean
 }
+
+type ManualActionForm = {
+  title: string
+  details: string
+  action_type: string
+  priority: string
+  due_date: string
+}
+
+const EMPTY_MANUAL_ACTION_FORM: ManualActionForm = {
+  title: '',
+  details: '',
+  action_type: 'send_follow_up',
+  priority: 'normal',
+  due_date: '',
+}
+
+const APPLICATION_STATUSES = [
+  'Found',
+  'Reviewed',
+  'CV Generated',
+  'Applied',
+  'Recruiter Replied',
+  'Interview',
+  'Assessment',
+  'Rejected',
+  'Offer',
+]
+
+const MANUAL_ACTION_TYPES = [
+  { value: 'send_follow_up', label: 'Follow-up' },
+  { value: 'respond_to_recruiter', label: 'Reply' },
+  { value: 'schedule_interview', label: 'Schedule interview' },
+  { value: 'prepare_interview', label: 'Prepare interview' },
+  { value: 'complete_assessment', label: 'Assessment' },
+  { value: 'send_documents', label: 'Documents' },
+  { value: 'complete_form', label: 'Form' },
+  { value: 'review_offer', label: 'Offer review' },
+  { value: 'archive_rejection', label: 'Archive rejection' },
+  { value: 'submit_application', label: 'Submit application' },
+]
 
 const DEFAULT_SECTIONS: Array<{ id: AppSection; label: string }> = [
   { id: 'overview', label: 'Home' },
@@ -623,6 +752,35 @@ function gmailThreadUrl(email: Email): string | null {
   return `https://mail.google.com/mail/u/0/#inbox/${email.gmail_thread_id}`
 }
 
+function detectSpanishText(value: string): boolean {
+  const text = value.toLowerCase()
+  if (!text) return false
+  const spanishHints = [
+    ' el ',
+    ' la ',
+    ' los ',
+    ' las ',
+    ' de ',
+    ' para ',
+    ' con ',
+    ' que ',
+    ' y ',
+    ' en ',
+    ' requisitos',
+    'responsabilidades',
+    'experiencia',
+    'equipo',
+    'puesto',
+    'vacante',
+    'aplicaci',
+    'gracias',
+    'hola',
+  ]
+  const accented = /[áéíóúñ¿¡]/.test(text)
+  const hintMatches = spanishHints.reduce((count, hint) => (text.includes(hint) ? count + 1 : count), 0)
+  return accented || hintMatches >= 3
+}
+
 function isNoReplySender(fromEmail: string | null | undefined): boolean {
   const sender = (fromEmail ?? '').toLowerCase()
   return sender.includes('no-reply@') || sender.includes('noreply@')
@@ -746,7 +904,7 @@ function ResourceBanner(props: { title: string; state: ResourceState<unknown> })
 
 function Panel(props: { title: string; subtitle?: string; children: ReactNode }) {
   return (
-    <section className="rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] p-4 shadow-[0_10px_32px_rgba(24,27,24,0.05)] sm:p-5">
+    <section className="app-panel rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] p-4 shadow-[0_10px_32px_rgba(24,27,24,0.05)] sm:p-5">
       <div className="border-b border-[color:var(--app-border)] pb-3">
         <p className="crm-label">Workspace</p>
         <h2 className="mt-1 text-lg font-semibold leading-6 text-[color:var(--app-ink)]">
@@ -787,9 +945,9 @@ function SectionButton(props: {
     <button
       type="button"
       onClick={props.onClick}
-      className={`flex items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition ${
+      className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
         props.active
-          ? 'bg-[color:var(--app-ink)] text-white'
+          ? 'bg-[color:var(--app-ink)] text-white shadow-[0_12px_28px_rgba(35,32,23,0.25)]'
           : 'text-[color:var(--app-muted)] hover:bg-[color:var(--app-bg-soft)] hover:text-[color:var(--app-ink)]'
       }`}
     >
@@ -1061,6 +1219,73 @@ function SetupHome(props: {
   )
 }
 
+function AuthGate(props: {
+  authStatus: ResourceState<AuthStatus | null>
+  appKey: string
+  operationError: string | null
+  operationMessage: string | null
+  authenticating: boolean
+  onAppKeyChange: (value: string) => void
+  onLogin: () => void
+}) {
+  return (
+    <div className="min-h-screen bg-[color:var(--app-bg)] px-4 py-8 text-[color:var(--app-ink)]">
+      <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-xl items-center">
+        <div className="w-full rounded-2xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] p-6 shadow-[0_24px_80px_rgba(24,27,24,0.10)]">
+          <p className="crm-label">Private Workspace</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[color:var(--app-ink)]">
+            Sign in to CareerOps
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-[color:var(--app-muted)]">
+            Enter the private app key configured on the backend. The key is exchanged for an HttpOnly session cookie and is not stored in the Vite bundle.
+          </p>
+          {props.authStatus.error ? (
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+              {props.authStatus.error}
+            </div>
+          ) : null}
+          {props.operationError ? (
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+              {props.operationError}
+            </div>
+          ) : null}
+          {props.operationMessage ? (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              {props.operationMessage}
+            </div>
+          ) : null}
+          <form
+            className="mt-5 space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              props.onLogin()
+            }}
+          >
+            <label className="block">
+              <span className="crm-label">App key</span>
+              <input
+                type="password"
+                value={props.appKey}
+                onChange={(event) => props.onAppKeyChange(event.target.value)}
+                className="mt-2 w-full rounded-xl border border-[color:var(--app-border)] bg-white px-3 py-2 text-sm outline-none focus:border-emerald-600"
+                autoComplete="current-password"
+                disabled={props.authenticating}
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={props.authenticating || !props.appKey.trim() || props.authStatus.loading}
+              className="crm-button w-full justify-center bg-[color:var(--app-ink)] text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {props.authenticating ? 'Signing in...' : 'Sign in'}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const autoInboxRefreshStarted = useRef(false)
   const autoSyncedApplicationIds = useRef<Set<string>>(new Set())
@@ -1088,6 +1313,7 @@ function App() {
   const [operationError, setOperationError] = useState<string | null>(null)
   const [documentSourceType, setDocumentSourceType] = useState('cv')
   const [selectedDocument, setSelectedDocument] = useState<File | null>(null)
+  const [selectedTemplateFile, setSelectedTemplateFile] = useState<File | null>(null)
   const [selectedGmailCredentialsFile, setSelectedGmailCredentialsFile] = useState<File | null>(
     null,
   )
@@ -1095,7 +1321,17 @@ function App() {
     'C:\\Users\\Jdela\\OneDrive - University of South Florida\\Escritorio\\resume\\resume\\pdf\\jose_david_gomez_resume_master_full_en.pdf',
   )
   const [emailAgentBatchLimit, setEmailAgentBatchLimit] = useState('8')
+  const [appKeyInput, setAppKeyInput] = useState('')
+  const [githubProfileUrl, setGithubProfileUrl] = useState('')
+  const [portfolioUrlsText, setPortfolioUrlsText] = useState('')
+  const [profileProjectForm, setProfileProjectForm] = useState<ProfileProjectForm>(EMPTY_PROJECT_FORM)
+  const [manualJobFallbackOpen, setManualJobFallbackOpen] = useState(false)
+  const [manualJobFallbackText, setManualJobFallbackText] = useState('')
+  const [manualJobFallbackCreateApplication, setManualJobFallbackCreateApplication] = useState(true)
 
+  const [authStatusState, setAuthStatusState] = useState<ResourceState<AuthStatus | null>>(
+    createInitialResource<AuthStatus | null>(null),
+  )
   const [jobs, setJobs] = useState<ResourceState<Job[]>>(createInitialResource([]))
   const [applications, setApplications] = useState<ResourceState<Application[]>>(
     createInitialResource([]),
@@ -1143,6 +1379,9 @@ function App() {
     ResourceState<ApplicationStatusCheckEvent[]>
   >(createInitialResource([]))
   const [selectedNoReplyDraft, setSelectedNoReplyDraft] = useState('')
+  const [manualApplicationStatus, setManualApplicationStatus] = useState('Rejected')
+  const [manualApplicationNote, setManualApplicationNote] = useState('')
+  const [manualActionForm, setManualActionForm] = useState<ManualActionForm>(EMPTY_MANUAL_ACTION_FORM)
   const [portalCredentialForm, setPortalCredentialForm] = useState<PortalCredentialForm>({
     portal_name: '',
     portal_url: '',
@@ -1159,6 +1398,16 @@ function App() {
       window.history.replaceState(null, '', window.location.pathname)
     }
 
+    void loadResource<AuthStatus | null>('/auth/status', setAuthStatusState, null)
+  }, [])
+
+  const appAuthenticated = Boolean(authStatusState.data?.authenticated)
+
+  useEffect(() => {
+    if (!appAuthenticated) {
+      return
+    }
+
     void loadResource<Job[]>('/jobs', setJobs, [])
     void loadResource<Application[]>('/applications', setApplications, [])
     void loadResource<Action[]>('/actions', setActions, [])
@@ -1167,11 +1416,13 @@ function App() {
     void loadResource<DocumentRecord[]>('/documents', setDocuments, [])
     void loadResource<GmailStatus | null>('/gmail/status', setGmailStatusState, null)
     void loadResource<NotificationSummary[]>('/notifications/daily-summary', setSummaries, [])
-  }, [])
+  }, [appAuthenticated])
 
   useEffect(() => {
+    if (!appAuthenticated) {
+      return
+    }
     if (gmailStatusState.data?.authenticated) {
-      setGmailOAuthPending(false)
       return
     }
     const timer = window.setInterval(() => {
@@ -1180,7 +1431,7 @@ function App() {
       })
     }, gmailOAuthPending ? 2000 : 5000)
     return () => window.clearInterval(timer)
-  }, [gmailOAuthPending, gmailStatusState.data?.authenticated])
+  }, [appAuthenticated, gmailOAuthPending, gmailStatusState.data?.authenticated])
 
   const effectiveSelectedJobId = selectedJobId ?? jobs.data[0]?.id ?? null
   const effectiveSelectedApplicationId =
@@ -1287,7 +1538,12 @@ function App() {
   )
   const latestCvDocument = useMemo(() => {
     return [...documents.data]
-      .filter((document) => document.source_type === 'cv')
+      .filter((document) => document.source_type === 'cv' && !document.original_filename.toLowerCase().endsWith('.tex'))
+      .sort((left, right) => right.created_at.localeCompare(left.created_at))[0]
+  }, [documents.data])
+  const latestCvTemplateDocument = useMemo(() => {
+    return [...documents.data]
+      .filter((document) => document.source_type === 'cv' && document.original_filename.toLowerCase().endsWith('.tex'))
       .sort((left, right) => right.created_at.localeCompare(left.created_at))[0]
   }, [documents.data])
 
@@ -1343,6 +1599,13 @@ function App() {
         : null,
     [applications.data, effectiveSelectedApplicationId],
   )
+  useEffect(() => {
+    if (selectedApplication) {
+      setManualApplicationStatus(selectedApplication.status)
+      setManualApplicationNote('')
+      setManualActionForm(EMPTY_MANUAL_ACTION_FORM)
+    }
+  }, [selectedApplication?.id, selectedApplication?.status])
   const selectedApplicationJob = useMemo(
     () => (selectedApplication ? jobsById.get(selectedApplication.job_id) ?? null : null),
     [jobsById, selectedApplication],
@@ -1366,14 +1629,17 @@ function App() {
   }, [emails.data, effectiveSelectedApplicationId])
 
   useEffect(() => {
-    setPortalCredentialForm({
-      portal_name: selectedApplicationJob?.company?.name ?? '',
-      portal_url: selectedApplicationJob?.source_url ?? '',
-      username: '',
-      password: '',
-      mfa_enabled: false,
-      daily_check_allowed: false,
-    })
+    const timer = window.setTimeout(() => {
+      setPortalCredentialForm({
+        portal_name: selectedApplicationJob?.company?.name ?? '',
+        portal_url: selectedApplicationJob?.source_url ?? '',
+        username: '',
+        password: '',
+        mfa_enabled: false,
+        daily_check_allowed: false,
+      })
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [selectedApplicationJob?.company?.name, selectedApplicationJob?.source_url])
 
   const actionsByApplicationId = useMemo(() => {
@@ -1580,6 +1846,37 @@ function App() {
     }
   }, [])
 
+  async function handleLogin() {
+    await runOperation('app-login', async () => {
+      const status = await requestApi<AuthStatus>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ app_key: appKeyInput.trim() }),
+      })
+      setAuthStatusState({
+        data: status,
+        loading: false,
+        error: null,
+        unavailable: false,
+      })
+      setAppKeyInput('')
+      return 'Signed in.'
+    })
+  }
+
+  useEffect(() => {
+    const preferences = profile.data?.preferences
+    if (!preferences) return
+    const github = typeof preferences.github_profile_url === 'string' ? preferences.github_profile_url : ''
+    const portfolio = Array.isArray(preferences.portfolio_urls)
+      ? preferences.portfolio_urls.filter((item): item is string => typeof item === 'string')
+      : []
+    const timer = window.setTimeout(() => {
+      setGithubProfileUrl(github)
+      setPortfolioUrlsText(portfolio.join('\n'))
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [profile.data?.id, profile.data?.preferences])
+
   async function refreshCoreData() {
     await Promise.all([
       loadResource<Job[]>('/jobs', setJobs, []),
@@ -1646,6 +1943,122 @@ function App() {
       return `Saved the full job description for ${result.job.title}.`
     })
   }
+
+  async function handleCreateManualJob(descriptionInput: string, createApplication: boolean) {
+    const description = descriptionInput.trim()
+    if (description.length < 20) {
+      setOperationError('Paste a full job description (at least 20 characters).')
+      return
+    }
+
+    await runOperation('create-manual-job', async () => {
+      const payload = {
+        description,
+        create_application: createApplication,
+      }
+      const result = await requestApi<JobDescriptionIngestResponse>('/jobs/from-description', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+
+      setSelectedJobId(result.job.id)
+      setActiveSection('jobs')
+      await Promise.all([
+        loadResource<Job[]>('/jobs', setJobs, []),
+        loadResource<Application[]>('/applications', setApplications, []),
+        loadResource<Action[]>('/actions', setActions, []),
+      ])
+      await refreshSelectedJobArtifacts(result.job.id)
+      return result.application
+        ? `Manual job added for ${result.job.title}. Application tracking was also created.`
+        : `Manual job added for ${result.job.title}.`
+    })
+  }
+
+  const openManualJobPopup = useCallback(() => {
+    const popup = window.open('about:blank', 'manual-job-input', 'popup=yes,width=900,height=760,resizable=yes,scrollbars=yes')
+    if (!popup) {
+      setOperationError('Popup blocked. Opened fallback input panel instead.')
+      setManualJobFallbackOpen(true)
+      return
+    }
+
+    popup.document.open()
+    popup.document.write(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Manual Job Input</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f4; color: #1f2937; }
+      .card { background: #ffffff; border: 1px solid #d6d3d1; border-radius: 16px; padding: 18px; max-width: 860px; margin: 0 auto; }
+      h1 { font-size: 20px; margin: 0 0 8px; }
+      p { font-size: 14px; color: #4b5563; margin: 0 0 14px; }
+      label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; font-weight: 600; }
+      textarea { width: 100%; min-height: 420px; margin-top: 8px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 12px; resize: vertical; font-size: 14px; line-height: 1.5; }
+      .row { margin-top: 12px; display: flex; align-items: center; gap: 8px; color: #4b5563; font-size: 14px; }
+      .actions { margin-top: 14px; display: flex; gap: 10px; justify-content: flex-end; }
+      button { border-radius: 10px; border: 1px solid #cbd5e1; background: #fff; padding: 10px 14px; cursor: pointer; }
+      button.primary { background: #111827; color: white; border-color: #111827; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Manual job input</h1>
+      <p>Paste the full job posting. The agent will parse title, company, location, and requirements.</p>
+      <label for="jobText">Full job text</label>
+      <textarea id="jobText" placeholder="Copy and paste the entire job posting here."></textarea>
+      <label class="row"><input id="createApp" type="checkbox" checked /> Create application tracking automatically</label>
+      <div class="actions">
+        <button id="cancelBtn" type="button">Cancel</button>
+        <button id="submitBtn" type="button" class="primary">Process manual job</button>
+      </div>
+    </div>
+    <script>
+      const submitBtn = document.getElementById('submitBtn');
+      const cancelBtn = document.getElementById('cancelBtn');
+      const setBusy = (busy) => {
+        submitBtn.textContent = busy ? 'Processing...' : 'Process manual job';
+        submitBtn.disabled = busy;
+        cancelBtn.disabled = busy;
+      };
+      const submit = () => {
+        const description = document.getElementById('jobText').value || '';
+        const createApplication = document.getElementById('createApp').checked;
+        setBusy(true);
+        window.opener.postMessage({ type: 'manual-job-submit', payload: { description, createApplication } }, window.location.origin);
+      };
+      window.addEventListener('message', (event) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type === 'manual-job-error') {
+          setBusy(false);
+        }
+      });
+      document.getElementById('submitBtn').addEventListener('click', submit);
+      document.getElementById('cancelBtn').addEventListener('click', () => window.close());
+    </script>
+  </body>
+</html>`)
+    popup.document.close()
+    popup.focus()
+  }, [])
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type !== 'manual-job-submit') return
+      const description = typeof event.data?.payload?.description === 'string' ? event.data.payload.description : ''
+      const createApplication = Boolean(event.data?.payload?.createApplication)
+      const popupWindow = event.source && 'close' in event.source ? (event.source as Window) : null
+      void handleCreateManualJob(description, createApplication).then(() => {
+        popupWindow?.close()
+      }).catch(() => {
+        popupWindow?.postMessage({ type: 'manual-job-error' }, window.location.origin)
+      })
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
 
   async function handleResolveSelectedJobDescription() {
     if (!effectiveSelectedJobId) {
@@ -1748,7 +2161,17 @@ function App() {
         },
       )
       setSelectedJobId(result.job.id)
-      setApplicationJobReplyInfo('')
+      const roleTitle = result.job.title ?? 'the role'
+      const companyName = result.job.company?.name ?? 'the company'
+      const replyContext = result.attempt?.reason
+        ? `${result.attempt.reason}\n\n`
+        : ''
+      const useSpanish = detectSpanishText(description)
+      setApplicationJobReplyInfo(
+        useSpanish
+          ? `${replyContext}Hola equipo de contratación de ${companyName},\n\nEspero que estén muy bien. Quisiera dar seguimiento a mi postulación para el puesto de ${roleTitle}. Estoy muy interesado en la oportunidad y agradecería cualquier actualización sobre el estado del proceso.\n\nSi les sirve, con gusto puedo compartir información adicional o completar otra etapa de entrevista para avanzar.\n\nGracias por su tiempo y consideración.\n\nSaludos cordiales,`
+          : `${replyContext}Hi ${companyName} hiring team,\n\nI hope you're doing well. I wanted to follow up on my application for the ${roleTitle} position. I'm very interested in the role and would appreciate any update you can share on the current status.\n\nIf helpful, I'm happy to provide any additional information or complete another interview step to support your process.\n\nThank you for your time and consideration.\n\nBest regards,`,
+      )
       if (selectedApplication) {
         setApplicationJobDescriptionDrafts((current) => {
           const next = { ...current }
@@ -2092,6 +2515,10 @@ function App() {
     if (!effectiveSelectedJobId) {
       return
     }
+    if (!selectedJobScore) {
+      setOperationError('Run Check fit first. A job score is required before creating a tailored resume plan.')
+      return
+    }
 
     await runOperation('cv-plan', async () => {
       const version = await requestApi<CVVersion>(
@@ -2187,6 +2614,99 @@ function App() {
     ])
   }
 
+  async function handleSavePublicSources() {
+    await runOperation('save-public-sources', async () => {
+      const payload = buildPublicSourcePreferences(githubProfileUrl, portfolioUrlsText)
+      await requestApi<PublicSourcePreferences>('/profile/preferences/public-sources', {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      })
+      await loadResource<CandidateProfile | null>('/profile', setProfile, null, { preserveDataWhileLoading: true })
+      return 'Public source URLs saved.'
+    })
+  }
+
+  async function handleEnrichFromPublicSources() {
+    await runOperation('enrich-public-sources', async () => {
+      const payload = buildPublicSourcePreferences(githubProfileUrl, portfolioUrlsText)
+      await requestApi<PublicSourcePreferences>('/profile/preferences/public-sources', {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      })
+      let result: PublicSourceEnrichmentResponse
+      try {
+        result = await requestApi<PublicSourceEnrichmentResponse>('/agents/profile/enrich-public-sources', {
+          method: 'POST',
+        })
+      } catch (error) {
+        const status = (error as Error & { status?: number }).status
+        if (status === 404) {
+          throw new Error(
+            'Public-source enrichment endpoint is not available on the current backend. Restart/rebuild the backend with the latest code, then retry.',
+            { cause: error },
+          )
+        }
+        throw error
+      }
+      setProfile((current) => ({ ...current, data: result.profile }))
+      return `Public sources synced: ${result.projects_added} added, ${result.projects_updated} updated, ${result.failures.length} source failures.`
+    })
+  }
+
+  async function handleAddProfileProject() {
+    await runOperation('add-profile-project', async () => {
+      const name = profileProjectForm.name.trim()
+      if (!name) {
+        throw new Error('Project name is required.')
+      }
+      const projectUrl = normalizeHttpUrl(profileProjectForm.project_url)
+      const repoUrl = normalizeHttpUrl(profileProjectForm.repo_url)
+      if (projectUrl && !isValidHttpUrl(projectUrl)) {
+        throw new Error('Project URL must be a valid http/https link.')
+      }
+      if (repoUrl && !isValidHttpUrl(repoUrl)) {
+        throw new Error('Repository URL must be a valid http/https link.')
+      }
+      const updatedProfile = await requestApi<CandidateProfile>('/profile/projects', {
+        method: 'POST',
+        body: JSON.stringify({
+          name,
+          description: profileProjectForm.description.trim() || null,
+          technologies: profileProjectForm.technologies
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean),
+          impact: profileProjectForm.impact.trim() || null,
+          project_url: projectUrl || null,
+          repo_url: repoUrl || null,
+          metric_bullets: profileProjectForm.metric_bullets
+            .split('\n')
+            .map((item) => item.trim())
+            .filter(Boolean),
+          evidence_text:
+            profileProjectForm.impact.trim() ||
+            profileProjectForm.description.trim() ||
+            `Manual project entry: ${name}`,
+        }),
+      })
+      setProfile((current) => ({ ...current, data: updatedProfile }))
+      setProfileProjectForm(EMPTY_PROJECT_FORM)
+      return `Added project: ${updatedProfile.projects.at(-1)?.name ?? name}.`
+    })
+  }
+
+  async function handleDeleteProfileProject(projectId: string, projectName: string) {
+    const confirmed = window.confirm(`Delete "${projectName}" from your profile projects?`)
+    if (!confirmed) return
+    await runOperation(`delete-profile-project-${projectId}`, async () => {
+      const updatedProfile = await requestApi<CandidateProfile>(`/profile/projects/${projectId}`, {
+        method: 'DELETE',
+      })
+      setProfile((current) => ({ ...current, data: updatedProfile }))
+      return `Deleted project: ${projectName}.`
+    })
+  }
+
   async function handleDeleteSelectedApplication() {
     if (!effectiveSelectedApplicationId || !selectedApplicationTracker.data) {
       return
@@ -2219,6 +2739,31 @@ function App() {
     })
   }
 
+  async function handleUploadTemplateDocument() {
+    if (!selectedTemplateFile) {
+      setOperationError('Choose a .tex CV template first.')
+      return
+    }
+    if (!selectedTemplateFile.name.toLowerCase().endsWith('.tex')) {
+      setOperationError('The CV template must be a .tex file.')
+      return
+    }
+
+    await runOperation('upload-template-document', async () => {
+      const formData = new FormData()
+      formData.append('file', selectedTemplateFile)
+      formData.append('source_type', 'cv')
+
+      await requestApi<DocumentRecord>('/documents/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      setSelectedTemplateFile(null)
+      await loadResource<DocumentRecord[]>('/documents', setDocuments, [])
+      return `Uploaded ${selectedTemplateFile.name} as the LaTeX CV template.`
+    })
+  }
+
   async function handleMarkApplied() {
     if (!effectiveSelectedApplicationId) {
       return
@@ -2239,6 +2784,64 @@ function App() {
     } finally {
       setApplicationMutating(false)
     }
+  }
+
+  async function handleSaveManualApplicationStatus() {
+    if (!effectiveSelectedApplicationId || !selectedApplication) {
+      return
+    }
+
+    const note = manualApplicationNote.trim()
+    const notes = note
+      ? [selectedApplication.notes?.trim(), `${manualApplicationStatus} manually: ${note}`]
+          .filter(Boolean)
+          .join('\n\n')
+      : selectedApplication.notes
+
+    await runOperation('manual-application-status', async () => {
+      await requestApi<Application>(`/applications/${effectiveSelectedApplicationId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: manualApplicationStatus,
+          notes,
+        }),
+      })
+      setManualApplicationNote('')
+      await refreshApplicationViews(effectiveSelectedApplicationId)
+      return `Application marked ${manualApplicationStatus}.`
+    })
+  }
+
+  async function handleAddManualNextStep() {
+    if (!effectiveSelectedApplicationId) {
+      return
+    }
+
+    const title = manualActionForm.title.trim()
+    if (!title) {
+      setOperationError('Add a next-step title before saving.')
+      return
+    }
+
+    const dueAt = manualActionForm.due_date
+      ? new Date(`${manualActionForm.due_date}T17:00:00`).toISOString()
+      : null
+
+    await runOperation('manual-next-step', async () => {
+      await requestApi<Action>(`/applications/${effectiveSelectedApplicationId}/actions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          action_type: manualActionForm.action_type,
+          title,
+          details: manualActionForm.details.trim() || null,
+          priority: manualActionForm.priority,
+          due_at: dueAt,
+        }),
+      })
+      setManualActionForm(EMPTY_MANUAL_ACTION_FORM)
+      await refreshApplicationViews(effectiveSelectedApplicationId)
+      return `Next step added: ${title}.`
+    })
   }
 
   async function handleSyncNextActions() {
@@ -2495,6 +3098,24 @@ function App() {
     void autoSyncNextActions(effectiveSelectedApplicationId)
   }, [workspaceUnlocked, effectiveSelectedApplicationId])
 
+  if (
+    (authStatusState.loading && authStatusState.data === null) ||
+    Boolean(authStatusState.error) ||
+    (authStatusState.data?.enabled && !authStatusState.data.authenticated)
+  ) {
+    return (
+      <AuthGate
+        authStatus={authStatusState}
+        appKey={appKeyInput}
+        operationMessage={operationMessage}
+        operationError={operationError}
+        authenticating={Boolean(operationMutating['app-login'])}
+        onAppKeyChange={setAppKeyInput}
+        onLogin={() => void handleLogin()}
+      />
+    )
+  }
+
   if (!workspaceUnlocked) {
     return (
       <SetupHome
@@ -2517,8 +3138,8 @@ function App() {
 
   return (
     <div className="min-h-screen text-[color:var(--app-ink)]">
-      <div className="mx-auto flex min-h-screen max-w-[1720px] flex-col gap-4 px-4 py-4 lg:px-5">
-        <header className="overflow-hidden rounded-xl border border-[color:var(--app-border)] bg-[#151815] px-5 py-4 text-white shadow-[0_12px_36px_rgba(24,27,24,0.14)]">
+      <div className="app-shell mx-auto flex min-h-screen max-w-[1720px] flex-col gap-4 px-4 py-4 lg:px-5">
+        <header className="app-header overflow-hidden rounded-xl border border-[color:var(--app-border)] px-5 py-4 text-white shadow-[0_12px_36px_rgba(24,27,24,0.14)]">
           <div className="pointer-events-none absolute hidden" />
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-1">
@@ -2590,7 +3211,7 @@ function App() {
         </header>
 
         <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="self-start rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] p-3 shadow-[0_10px_32px_rgba(24,27,24,0.05)] lg:sticky lg:top-4">
+          <aside className="app-nav self-start rounded-xl border border-[color:var(--app-border)] bg-[color:var(--app-surface)] p-3 shadow-[0_10px_32px_rgba(24,27,24,0.05)] lg:sticky lg:top-4">
             <div className="mb-4 rounded-lg bg-[color:var(--app-bg-soft)] p-3 ring-1 ring-[color:var(--app-border)]">
               <p className="crm-label">
                 Workspace
@@ -2656,11 +3277,47 @@ function App() {
               <>
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.95fr)]">
                   <Panel
-                    title="Home"
-                    subtitle="A simpler daily view of what matters now: promising jobs, application progress, and the next move to make."
+                    title="Focus now"
+                    subtitle="Start here: what to do first, then what to review next."
                   >
                     <ResourceBanner title="Daily summary" state={summaries} />
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="fade-up mb-5 rounded-[1.2rem] border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-4">
+                      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                        Today's priorities
+                      </p>
+                      {actions.loading ? (
+                        <div className="mt-3 space-y-2">
+                          <div className="skeleton h-4 w-full rounded-md" />
+                          <div className="skeleton h-4 w-[92%] rounded-md" />
+                          <div className="skeleton h-4 w-[86%] rounded-md" />
+                        </div>
+                      ) : openActions.length ? (
+                        <ul className="mt-3 space-y-2 text-sm text-[color:var(--app-muted)]">
+                          {openActions.slice(0, 3).map((action) => {
+                            const application = applications.data.find((candidate) => candidate.id === action.application_id)
+                            const job = application ? jobsById.get(application.job_id) : null
+                            const companyLabel = job?.company?.name ?? application?.company_name ?? 'Unknown company'
+                            const roleLabel = job?.title ?? application?.job_title ?? 'Unknown role'
+                            return (
+                              <li key={action.id} className="flex items-start justify-between gap-3">
+                                <span className="min-w-0">
+                                  <span className="font-medium text-[color:var(--app-ink)]">{action.title}</span>{' '}
+                                  <span>
+                                    · {companyLabel} - {roleLabel}
+                                  </span>
+                                </span>
+                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${getPriorityTone(action.priority)}`}>
+                                  {action.priority}
+                                </span>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-sm text-[color:var(--app-muted)]">No urgent actions right now.</p>
+                      )}
+                    </div>
+                    <div className="fade-up fade-up-delay-1 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <MetricCard
                         label="Fresh jobs"
                         value={jobs.data.length}
@@ -2683,8 +3340,23 @@ function App() {
                       />
                     </div>
 
-                    <div className="mt-6 grid gap-4 xl:grid-cols-2">
-                      {featuredJobs.length ? (
+                    <div className="fade-up fade-up-delay-2 mt-6 grid gap-4 xl:grid-cols-2">
+                      {jobs.loading ? (
+                        <>
+                          <div className="rounded-[1.4rem] border border-[color:var(--app-border)] bg-white p-4">
+                            <div className="skeleton h-4 w-28 rounded-md" />
+                            <div className="skeleton mt-2 h-5 w-52 rounded-md" />
+                            <div className="skeleton mt-3 h-3 w-36 rounded-md" />
+                            <div className="skeleton mt-3 h-14 w-full rounded-md" />
+                          </div>
+                          <div className="rounded-[1.4rem] border border-[color:var(--app-border)] bg-white p-4">
+                            <div className="skeleton h-4 w-24 rounded-md" />
+                            <div className="skeleton mt-2 h-5 w-48 rounded-md" />
+                            <div className="skeleton mt-3 h-3 w-40 rounded-md" />
+                            <div className="skeleton mt-3 h-14 w-full rounded-md" />
+                          </div>
+                        </>
+                      ) : featuredJobs.length ? (
                         featuredJobs.map((job) => {
                           const linkedApplication = applicationsByJobId.get(job.id)
                           return (
@@ -2732,9 +3404,9 @@ function App() {
 
                   <Panel
                     title="Quick actions"
-                    subtitle="Only the smallest set of actions needed to keep the pipeline moving."
+                    subtitle="Small actions that keep momentum without context switching."
                   >
-                    <div className="space-y-3">
+                    <div className="fade-up space-y-3">
                       {homeQuickActions.map((item) => (
                         <button
                           key={item.label}
@@ -2751,7 +3423,7 @@ function App() {
                       ))}
                     </div>
 
-                    <div className="mt-6 rounded-[1.35rem] border border-[color:var(--app-border)] bg-[linear-gradient(180deg,#fffdf8,#f5efe5)] p-4">
+                    <div className="fade-up fade-up-delay-1 mt-6 rounded-[1.35rem] border border-[color:var(--app-border)] bg-[linear-gradient(180deg,#fffdf8,#f5efe5)] p-4">
                       <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
                         Profile completion
                       </p>
@@ -2785,12 +3457,19 @@ function App() {
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
                   <Panel
                     title="Application progress"
-                    subtitle="A compact view of the applications that still need attention."
+                    subtitle="Applications that still need follow-through."
                   >
-                    {activeApplications.length ? (
+                    {applications.loading ? (
+                      <div className="space-y-3">
+                        <div className="skeleton h-20 w-full rounded-[1.3rem]" />
+                        <div className="skeleton h-20 w-full rounded-[1.3rem]" />
+                      </div>
+                    ) : activeApplications.length ? (
                       <div className="space-y-3">
                         {activeApplications.map((application) => {
                           const job = jobsById.get(application.job_id)
+                          const companyLabel = job?.company?.name ?? application.company_name ?? 'Unknown company'
+                          const roleLabel = job?.title ?? application.job_title ?? 'Unknown role'
                           return (
                             <button
                               key={application.id}
@@ -2804,10 +3483,20 @@ function App() {
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="text-sm font-medium text-[color:var(--app-ink)]">
-                                    {job?.company?.name ?? 'Unknown company'}
+                                    {companyLabel}
                                   </p>
                                   <p className="mt-1 text-sm text-[color:var(--app-muted)]">
-                                    {job?.title ?? 'Unknown role'}
+                                    {roleLabel}
+                                  </p>
+                                  <p className="mt-2 text-xs leading-5 text-[color:var(--app-muted)]">
+                                    {truncate(
+                                      cleanDisplayText(
+                                        job?.description ||
+                                          application.notes ||
+                                          'Open this application for full details and next actions.',
+                                      ),
+                                      120,
+                                    )}
                                   </p>
                                 </div>
                                 <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getStatusTone(application.status)}`}>
@@ -2833,16 +3522,23 @@ function App() {
 
                   <Panel
                     title="Upcoming actions"
-                    subtitle="The next interviews, replies, or follow-ups worth handling now."
+                    subtitle="Interviews, replies, and follow-ups worth handling now."
                   >
                     <ResourceBanner title="Actions" state={actions} />
-                    {openActions.length ? (
+                    {actions.loading ? (
+                      <div className="space-y-3">
+                        <div className="skeleton h-24 w-full rounded-[1.25rem]" />
+                        <div className="skeleton h-24 w-full rounded-[1.25rem]" />
+                      </div>
+                    ) : openActions.length ? (
                       <div className="space-y-3">
                         {openActions.slice(0, 4).map((action) => {
                           const application = applications.data.find(
                             (candidate) => candidate.id === action.application_id,
                           )
                           const job = application ? jobsById.get(application.job_id) : null
+                          const companyLabel = job?.company?.name ?? application?.company_name ?? 'Unknown company'
+                          const roleLabel = job?.title ?? application?.job_title ?? 'Unknown role'
                           return (
                             <article
                               key={action.id}
@@ -2855,7 +3551,7 @@ function App() {
                                 </span>
                               </div>
                               <p className="mt-1 text-sm text-[color:var(--app-muted)]">
-                                {job?.company?.name ?? 'Unknown company'} - {job?.title ?? 'Unknown role'}
+                                {companyLabel} - {roleLabel}
                               </p>
                               <p className="mt-3 text-sm leading-6 text-[color:var(--app-muted)]">
                                 {truncate(action.details, 140)}
@@ -3055,6 +3751,97 @@ function App() {
                       </div>
                     </div>
 
+                    <div className="rounded-[1.4rem] border border-[color:var(--app-border)] bg-[linear-gradient(180deg,#fffdf7,#f4efe5)] p-4">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-amber-900">
+                            LaTeX CV template
+                          </p>
+                          <p className="mt-1 text-sm leading-6 text-[color:var(--app-muted)]">
+                            Upload a .tex resume template with Summary, Technical Skills, Experience, and Selected Projects sections for final CV generation.
+                          </p>
+                          {latestCvTemplateDocument ? (
+                            <p className="mt-2 text-xs text-amber-900">
+                              Active template: {truncate(latestCvTemplateDocument.original_filename, 48)}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                        <label className="block">
+                          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-amber-900">
+                            Template file
+                          </span>
+                          <input
+                            type="file"
+                            accept=".tex"
+                            onChange={(event) => setSelectedTemplateFile(event.target.files?.[0] ?? null)}
+                            className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] file:mr-3 file:rounded-xl file:border-0 file:bg-amber-800 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void handleUploadTemplateDocument()}
+                          disabled={operationMutating['upload-template-document']}
+                          className="rounded-2xl bg-amber-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-900 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {operationMutating['upload-template-document'] ? 'Uploading...' : 'Upload template'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[1.4rem] border border-[color:var(--app-border)] bg-[linear-gradient(180deg,#f8fcff,#ebf4ff)] p-4">
+                      <p className="text-sm font-medium text-sky-900">Public profile sources</p>
+                      <p className="mt-1 text-sm leading-6 text-[color:var(--app-muted)]">
+                        Add public GitHub and portfolio URLs. Sync imports only evidence-backed project claims.
+                      </p>
+                      <div className="mt-3 grid gap-3">
+                        <label className="block">
+                          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-sky-900">
+                            GitHub URL
+                          </span>
+                          <input
+                            type="url"
+                            value={githubProfileUrl}
+                            onChange={(event) => setGithubProfileUrl(event.target.value)}
+                            placeholder="https://github.com/username"
+                            className="mt-2 w-full rounded-2xl border border-sky-200 bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none transition focus:border-[color:var(--app-accent)]"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-sky-900">
+                            Portfolio links
+                          </span>
+                          <textarea
+                            value={portfolioUrlsText}
+                            onChange={(event) => setPortfolioUrlsText(event.target.value)}
+                            rows={3}
+                            placeholder={'https://example.com\nhttps://example.com/projects'}
+                            className="mt-2 w-full rounded-2xl border border-sky-200 bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none transition focus:border-[color:var(--app-accent)]"
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleSavePublicSources()}
+                          disabled={Boolean(operationMutating['save-public-sources'])}
+                          className="rounded-2xl border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-sky-800 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {operationMutating['save-public-sources'] ? 'Saving...' : 'Save public sources'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleEnrichFromPublicSources()}
+                          disabled={Boolean(operationMutating['enrich-public-sources'])}
+                          className="rounded-2xl bg-sky-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-900 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {operationMutating['enrich-public-sources'] ? 'Syncing...' : 'Sync public profile sources'}
+                        </button>
+                      </div>
+                    </div>
+
                     <ResourceBanner title="Documents" state={documents} />
                     <div className="space-y-3">
                       {documents.data.map((document) => (
@@ -3062,14 +3849,22 @@ function App() {
                           key={document.id}
                           className="rounded-[1.2rem] border border-[color:var(--app-border)] bg-white/90 p-3"
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-sm font-medium text-[color:var(--app-ink)]">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <p
+                              className="min-w-0 flex-1 break-all pr-1 text-sm font-medium text-[color:var(--app-ink)] sm:truncate sm:break-normal"
+                              title={document.original_filename}
+                            >
                               {document.original_filename}
                             </p>
-                            <div className="flex items-center gap-2">
+                            <div className="flex shrink-0 flex-wrap items-center gap-2">
                               <span className="rounded-full bg-[color:var(--app-bg-soft)] px-2.5 py-1 text-xs font-medium text-[color:var(--app-muted)] ring-1 ring-[color:var(--app-border)]">
                                 {document.source_type}
                               </span>
+                              {document.original_filename.toLowerCase().endsWith('.tex') ? (
+                                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900 ring-1 ring-amber-200">
+                                  LaTeX template
+                                </span>
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={() => void handleDeleteDocument(document)}
@@ -3316,6 +4111,60 @@ function App() {
                           Dismiss
                         </button>
                       </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={openManualJobPopup}
+                    className="rounded-2xl bg-[color:var(--app-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-92"
+                  >
+                    Add manual job
+                  </button>
+                </div>
+                {manualJobFallbackOpen ? (
+                  <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[color:var(--app-ink)]">Manual job input fallback</p>
+                        <p className="mt-1 text-xs text-[color:var(--app-muted)]">
+                          Popup was blocked. Paste full job text here and process it.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setManualJobFallbackOpen(false)}
+                        className="rounded-xl border border-[color:var(--app-border)] bg-white px-3 py-1.5 text-xs font-medium text-[color:var(--app-ink)]"
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <textarea
+                      value={manualJobFallbackText}
+                      onChange={(event) => setManualJobFallbackText(event.target.value)}
+                      rows={10}
+                      placeholder="Copy and paste the entire job posting here."
+                      className="mt-3 min-h-56 w-full resize-y rounded-2xl border border-[color:var(--app-border-strong)] bg-[color:var(--app-bg-soft)] px-4 py-3 text-sm leading-6 text-[color:var(--app-ink)] outline-none transition focus:border-[color:var(--app-accent)]"
+                    />
+                    <label className="mt-3 inline-flex items-center gap-2 text-sm text-[color:var(--app-muted)]">
+                      <input
+                        type="checkbox"
+                        checked={manualJobFallbackCreateApplication}
+                        onChange={(event) => setManualJobFallbackCreateApplication(event.target.checked)}
+                      />
+                      Create application tracking automatically
+                    </label>
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={() => void handleCreateManualJob(manualJobFallbackText, manualJobFallbackCreateApplication)}
+                        disabled={operationMutating['create-manual-job'] || manualJobFallbackText.trim().length < 20}
+                        className="rounded-2xl bg-[color:var(--app-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-92 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {operationMutating['create-manual-job'] ? 'Processing...' : 'Process manual job'}
+                      </button>
                     </div>
                   </div>
                 ) : null}
@@ -3594,7 +4443,8 @@ function App() {
                           <button
                             type="button"
                             onClick={() => void handleCreateCvPlan()}
-                            disabled={operationMutating['cv-plan'] || selectedJobDescriptionIncomplete}
+                            disabled={operationMutating['cv-plan'] || selectedJobDescriptionIncomplete || !selectedJobScore}
+                            title={!selectedJobScore ? 'Run Check fit first to create a score.' : undefined}
                             className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {operationMutating['cv-plan'] ? 'Planning...' : 'Plan tailored resume'}
@@ -3882,20 +4732,28 @@ function App() {
                               <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
                                 Role overview
                               </p>
-                              <p className="mt-3 text-sm leading-7 text-slate-700">
-                                {selectedJobSections.overview || cleanDisplayText(selectedJob.description)}
-                              </p>
+                              {selectedJobSections.overview.length ? (
+                                <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
+                                  {selectedJobSections.overview.slice(0, 4).map((item) => (
+                                    <li key={item}>{item}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="mt-3 text-sm text-[color:var(--app-muted)]">
+                                  Overview bullets will appear once the description has clearer structure.
+                                </p>
+                              )}
                             </div>
 
-                            <div className="grid gap-5 lg:grid-cols-2">
-                              <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-5">
+                            <div className="space-y-4">
+                              <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-6">
                                 <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
                                   Responsibilities
                                 </p>
                                 {selectedJobSections.responsibilities.length ? (
-                                  <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+                                  <ul className="mt-3 list-disc space-y-3 pl-5 text-sm leading-7 text-slate-700">
                                     {selectedJobSections.responsibilities.slice(0, 6).map((item) => (
-                                      <li key={item}>- {item}</li>
+                                      <li key={item}>{item}</li>
                                     ))}
                                   </ul>
                                 ) : (
@@ -3905,20 +4763,20 @@ function App() {
                                 )}
                               </div>
 
-                              <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-5">
+                              <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-6">
                                 <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
                                   Requirements
                                 </p>
                                 {(selectedJobSections.requirements.length ||
                                   selectedJobScore?.extracted_requirements.required_skills?.length) ? (
-                                  <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
+                                  <ul className="mt-3 list-disc space-y-3 pl-5 text-sm leading-7 text-slate-700">
                                     {(selectedJobSections.requirements.length
                                       ? selectedJobSections.requirements
                                       : selectedJobScore?.extracted_requirements.required_skills ?? []
                                     )
                                       .slice(0, 6)
                                       .map((item) => (
-                                        <li key={item}>- {item}</li>
+                                        <li key={item}>{item}</li>
                                       ))}
                                   </ul>
                                 ) : (
@@ -3929,14 +4787,14 @@ function App() {
                               </div>
                             </div>
 
-                            <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-white p-5">
-                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
-                                Full description
-                              </p>
+                            <details className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-white p-5">
+                              <summary className="cursor-pointer text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                Full description (optional)
+                              </summary>
                               <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">
                                 {cleanDisplayText(selectedJob.description)}
                               </p>
-                            </div>
+                            </details>
                           </div>
 
                           <div className="space-y-5">
@@ -3945,16 +4803,11 @@ function App() {
                                 Technologies
                               </p>
                               {selectedJobTechnologies.length ? (
-                                <div className="mt-3 flex flex-wrap gap-2">
+                                <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
                                   {selectedJobTechnologies.map((technology) => (
-                                    <span
-                                      key={technology}
-                                      className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-[color:var(--app-ink)] ring-1 ring-[color:var(--app-border)]"
-                                    >
-                                      {technology}
-                                    </span>
+                                    <li key={technology}>{technology}</li>
                                   ))}
-                                </div>
+                                </ul>
                               ) : (
                                 <p className="mt-3 text-sm text-[color:var(--app-muted)]">
                                   No technology tags were inferred yet from the job text.
@@ -4479,6 +5332,163 @@ function App() {
                           >
                             {operationMutating['delete-application'] ? 'Deleting...' : 'Delete application'}
                           </button>
+                        </div>
+
+                        <div className="rounded-[1.35rem] border border-[color:var(--app-border)] bg-white p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[color:var(--app-muted)]">
+                                Manual tracker
+                              </p>
+                              <p className="mt-2 text-sm leading-6 text-[color:var(--app-muted)]">
+                                Set the application outcome and add follow-up work that stays in the action queue.
+                              </p>
+                            </div>
+                            <span className="rounded-md bg-[color:var(--app-bg-soft)] px-3 py-1 text-xs font-medium text-[color:var(--app-muted)]">
+                              {selectedApplicationTracker.data.status}
+                            </span>
+                          </div>
+                          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(260px,0.82fr)_minmax(0,1.18fr)]">
+                            <div className="rounded-lg border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-3">
+                              <label className="block">
+                                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                                  Application status
+                                </span>
+                                <select
+                                  value={manualApplicationStatus}
+                                  onChange={(event) => setManualApplicationStatus(event.target.value)}
+                                  className="mt-2 w-full rounded-md border border-[color:var(--app-border-strong)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                                >
+                                  {APPLICATION_STATUSES.map((statusOption) => (
+                                    <option key={statusOption} value={statusOption}>
+                                      {statusOption}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <textarea
+                                value={manualApplicationNote}
+                                onChange={(event) => setManualApplicationNote(event.target.value)}
+                                rows={4}
+                                placeholder="Add optional status note."
+                                className="mt-3 min-h-24 w-full resize-y rounded-md border border-[color:var(--app-border-strong)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveManualApplicationStatus()}
+                                disabled={
+                                  operationMutating['manual-application-status'] ||
+                                  manualApplicationStatus === selectedApplicationTracker.data.status && !manualApplicationNote.trim()
+                                }
+                                className="mt-3 rounded-md bg-[color:var(--app-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {operationMutating['manual-application-status']
+                                  ? 'Saving...'
+                                  : manualApplicationStatus === 'Rejected'
+                                    ? 'Mark rejected'
+                                    : 'Save status'}
+                              </button>
+                            </div>
+
+                            <div className="rounded-lg border border-[color:var(--app-border)] bg-[color:var(--app-bg-soft)] p-3">
+                              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+                                <label className="block">
+                                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                                    Next step
+                                  </span>
+                                  <input
+                                    value={manualActionForm.title}
+                                    onChange={(event) =>
+                                      setManualActionForm((current) => ({
+                                        ...current,
+                                        title: event.target.value,
+                                      }))
+                                    }
+                                    placeholder="Follow up with recruiter"
+                                    className="mt-2 w-full rounded-md border border-[color:var(--app-border-strong)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                                  />
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                                    Due date
+                                  </span>
+                                  <input
+                                    type="date"
+                                    value={manualActionForm.due_date}
+                                    onChange={(event) =>
+                                      setManualActionForm((current) => ({
+                                        ...current,
+                                        due_date: event.target.value,
+                                      }))
+                                    }
+                                    className="mt-2 w-full rounded-md border border-[color:var(--app-border-strong)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                                  />
+                                </label>
+                              </div>
+                              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                <label className="block">
+                                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                                    Type
+                                  </span>
+                                  <select
+                                    value={manualActionForm.action_type}
+                                    onChange={(event) =>
+                                      setManualActionForm((current) => ({
+                                        ...current,
+                                        action_type: event.target.value,
+                                      }))
+                                    }
+                                    className="mt-2 w-full rounded-md border border-[color:var(--app-border-strong)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                                  >
+                                    {MANUAL_ACTION_TYPES.map((actionType) => (
+                                      <option key={actionType.value} value={actionType.value}>
+                                        {actionType.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--app-muted)]">
+                                    Priority
+                                  </span>
+                                  <select
+                                    value={manualActionForm.priority}
+                                    onChange={(event) =>
+                                      setManualActionForm((current) => ({
+                                        ...current,
+                                        priority: event.target.value,
+                                      }))
+                                    }
+                                    className="mt-2 w-full rounded-md border border-[color:var(--app-border-strong)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                                  >
+                                    <option value="normal">Normal</option>
+                                    <option value="high">High</option>
+                                    <option value="low">Low</option>
+                                  </select>
+                                </label>
+                              </div>
+                              <textarea
+                                value={manualActionForm.details}
+                                onChange={(event) =>
+                                  setManualActionForm((current) => ({
+                                    ...current,
+                                    details: event.target.value,
+                                  }))
+                                }
+                                rows={3}
+                                placeholder="Add context, contact, or link."
+                                className="mt-3 min-h-20 w-full resize-y rounded-md border border-[color:var(--app-border-strong)] bg-white px-3 py-2 text-sm text-[color:var(--app-ink)] outline-none focus:border-[color:var(--app-accent)]"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void handleAddManualNextStep()}
+                                disabled={operationMutating['manual-next-step'] || !manualActionForm.title.trim()}
+                                className="mt-3 rounded-md bg-[color:var(--app-ink)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {operationMutating['manual-next-step'] ? 'Adding...' : 'Add next step'}
+                              </button>
+                            </div>
+                          </div>
                         </div>
 
                         <div className="crm-subcard p-4">
@@ -5088,7 +6098,17 @@ function App() {
             ) : null}
 
             {activeSection === 'profile' ? (
-              <ProfileSection profile={profile} Panel={Panel} ResourceBanner={ResourceBanner} />
+              <ProfileSection
+                profile={profile}
+                Panel={Panel}
+                ResourceBanner={ResourceBanner}
+                projectForm={profileProjectForm}
+                projectMutating={Boolean(operationMutating['add-profile-project'])}
+                deletingProjectIds={operationMutating}
+                onProjectFormChange={setProfileProjectForm}
+                onAddProject={() => void handleAddProfileProject()}
+                onDeleteProject={(projectId, projectName) => void handleDeleteProfileProject(projectId, projectName)}
+              />
             ) : null}
           </main>
         </div>

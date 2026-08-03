@@ -14,6 +14,11 @@ def _normalized(value: str | None) -> str:
     return normalize_display_text(value, fallback=(value or "").strip()) or ""
 
 
+def is_excluded_company_name(company_name: str | None) -> bool:
+    normalized = _normalized(company_name).casefold().strip(" '\"")
+    return normalized in {"hired"}
+
+
 def build_job_fingerprints(
     *,
     source: str,

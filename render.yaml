@@ -61,6 +61,8 @@ services:
         value: "0"
       - key: SCHEDULER_TIMEZONE
         value: America/Bogota
+      - key: ENABLE_BROWSER_JOB_CHECKS
+        value: "false"
 
 databases:
   - name: careerops-postgres

@@ -1,3 +1,4 @@
+from app.documents import _extract_text
 from app.documents import is_evaluation_artifact_document
 from app.documents import validate_local_document_path
 from app.models import Document, SourceType
@@ -87,3 +88,15 @@ def test_validate_local_document_path_rejects_unsupported_extension(tmp_path, mo
         assert "Unsupported local document type" in str(error)
     else:
         raise AssertionError("Expected unsupported extension to be rejected.")
+
+
+def test_tex_document_extraction_preserves_raw_latex_template(tmp_path):
+    tex_path = tmp_path / "resume_template.tex"
+    tex_content = "\\documentclass{article}\n\\begin{document}\n\\section{Summary}\nRaw   spacing\n\\end{document}\n"
+    tex_path.write_text(tex_content, encoding="utf-8")
+
+    extracted_text, metadata = _extract_text(tex_path, "application/x-tex")
+
+    assert extracted_text == tex_content
+    assert metadata["parser"] == "latex_template"
+    assert metadata["cv_template"] is True

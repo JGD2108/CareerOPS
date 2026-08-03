@@ -21,6 +21,7 @@ GMAIL_OAUTH_REDIRECT_URI=
 LOCAL_STORAGE_DIR=/storage
 GMAIL_CREDENTIALS_FILE=/storage/secrets/gmail_credentials.json
 GMAIL_TOKEN_FILE=/storage/secrets/gmail_token.json
+ENABLE_BROWSER_JOB_CHECKS=false
 OPENAI_EMAIL_MODEL=gpt-5-nano
 OPENAI_JOB_MODEL=gpt-5-nano
 OPENAI_PROFILE_MODEL=gpt-5-mini
@@ -101,8 +102,9 @@ Required frontend values:
 
 ```text
 VITE_API_BASE_URL=https://YOUR_BACKEND_DOMAIN/api/v1
-VITE_CAREEROPS_API_KEY=same value as APP_API_KEY
 ```
+
+Do not set `VITE_CAREEROPS_API_KEY`. The deployed frontend signs in through `/api/v1/auth/login` and receives an HttpOnly session cookie.
 
 After frontend deploy, update backend:
 
@@ -115,10 +117,11 @@ CORS_ORIGIN_REGEX=^https://frontend-[a-z0-9-]+-jgd2108s-projects\.vercel\.app$
 
 1. Open `https://YOUR_BACKEND_DOMAIN/health`.
 2. Open `https://YOUR_FRONTEND_DOMAIN`.
-3. In Setup, click **Open web OAuth URL**.
-4. Complete Google OAuth.
-5. Sync Gmail.
-6. Sync LinkedIn via Gmail.
-7. Rebuild profile/job embeddings.
-8. Score one job.
-9. Generate one CV PDF.
+3. Sign in with the private `APP_API_KEY`.
+4. In Setup, click **Open web OAuth URL**.
+5. Complete Google OAuth.
+6. Sync Gmail.
+7. Sync LinkedIn via Gmail.
+8. Rebuild profile/job embeddings.
+9. Score one job.
+10. Generate one CV PDF.

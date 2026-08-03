@@ -110,6 +110,8 @@ def _extract_text(path: Path, content_type: str | None) -> tuple[str | None, dic
         document = DocxDocument(str(path))
         paragraphs = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
         return normalize_text_block("\n\n".join(paragraphs)), {"parser": "docx", "paragraph_count": len(paragraphs)}
+    if suffix == ".tex":
+        return path.read_text(encoding="utf-8"), {"parser": "latex_template", "cv_template": True}
     if suffix in TEXT_EXTENSIONS:
         return normalize_text_block(path.read_text(encoding="utf-8")), {"parser": "plain_text"}
     return None, {"parser": "unsupported"}

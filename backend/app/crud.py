@@ -1,4 +1,5 @@
 from uuid import UUID
+from urllib.parse import urlsplit, urlunsplit
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -24,6 +25,19 @@ from app.schemas import ApplicationCreate, ApplicationUpdate, JobCreate
 from app.text_normalization import normalize_display_text
 
 
+def _normalize_url_for_storage(value: str | None, *, max_length: int = 1000) -> str | None:
+    if not value:
+        return None
+    raw = value.strip()
+    if len(raw) <= max_length:
+        return raw
+    parsed = urlsplit(raw)
+    without_query = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    if len(without_query) <= max_length:
+        return without_query
+    return raw[:max_length]
+
+
 def get_or_create_company(db: Session, name: str) -> Company:
     normalized_name = normalize_display_text(name, fallback=name.strip()) or name.strip()
     company = db.scalar(select(Company).where(Company.name == normalized_name))
@@ -47,7 +61,9 @@ def create_job(db: Session, payload: JobCreate) -> Job:
     company = get_or_create_company(db, payload.company_name)
     description = normalize_display_text(payload.description, fallback=payload.description) or payload.description
     description_quality = description_quality_for_text(description)
+    normalized_source_url = _normalize_url_for_storage(str(payload.source_url) if payload.source_url else None)
     resolved_description = description if description_quality in {"medium", "high"} else None
+    resolved_url = _normalize_url_for_storage(str(payload.source_url)) if payload.source_url and resolved_description else None
     if payload.source in {"greenhouse", "lever", "ashby"} and resolved_description:
         description_status = "resolved_from_ats"
         description_source = payload.source
@@ -70,7 +86,7 @@ def create_job(db: Session, payload: JobCreate) -> Job:
         company_id=company.id,
         title=normalize_display_text(payload.title, fallback=payload.title.strip()) or payload.title.strip(),
         source=payload.source,
-        source_url=str(payload.source_url) if payload.source_url else None,
+        source_url=normalized_source_url,
         location=normalize_display_text(payload.location),
         work_mode=normalize_display_text(payload.work_mode),
         seniority=normalize_display_text(payload.seniority),
@@ -84,7 +100,7 @@ def create_job(db: Session, payload: JobCreate) -> Job:
         description_source=description_source,
         fetch_status=fetch_status,
         resolved_description=resolved_description,
-        resolved_description_url=str(payload.source_url) if payload.source_url and resolved_description else None,
+        resolved_description_url=resolved_url,
         resolution_confidence=resolution_confidence,
         resolution_notes=resolution_notes,
         raw_payload=payload.model_dump(mode="json"),

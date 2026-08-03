@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     app_auth_enabled: bool = False
     allow_loopback_auth_bypass: bool = True
     app_api_key: str | None = None
+    app_session_cookie_name: str = "careerops_session"
+    app_session_max_age_seconds: int = 60 * 60 * 12
     portal_credential_encryption_key: str | None = None
     portal_credential_encryption_key_id: str = "local-env"
     local_document_allowed_roots: str = "~/Documents,~/Desktop,~/Downloads,../storage"
@@ -35,6 +37,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5-mini"
     openai_profile_model: str = "gpt-5-mini"
     openai_email_model: str = "gpt-5-nano"
+    openai_email_escalation_model: str = "gpt-5-mini"
     openai_job_model: str = "gpt-5-nano"
     openai_cv_model: str = "gpt-5-mini"
     openai_embedding_model: str = "text-embedding-3-small"
@@ -42,6 +45,7 @@ class Settings(BaseSettings):
     ai_agent_max_input_chars: int = 24000
     eval_capture_dir: str | None = "../evals/captures"
     scheduler_lock_file: str = "../storage/locks/job_discovery_scheduler.lock"
+    enable_browser_job_checks: bool = False
     target_role_keywords: str = (
         "junior software engineer,software engineer,junior software developer,"
         "software developer,backend engineer,back-end engineer,backend developer,"

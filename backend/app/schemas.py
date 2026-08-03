@@ -112,6 +112,17 @@ class ApplicationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AuthStatusRead(BaseModel):
+    enabled: bool
+    configured: bool
+    authenticated: bool
+    mode: str
+
+
+class AuthLoginRequest(BaseModel):
+    app_key: str
+
+
 class PortalCredentialCreate(BaseModel):
     portal_name: str = Field(min_length=2, max_length=255)
     portal_url: HttpUrl
@@ -246,9 +257,36 @@ class ProfileProjectRead(BaseModel):
     description: str | None
     technologies: list | None
     impact: str | None
+    project_url: str | None = None
+    repo_url: str | None = None
+    metric_bullets: list[str] | None = None
+    source_type: str | None = None
+    source_document_id: UUID | None = None
     evidence_text: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProfileProjectCreateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
+    technologies: list[str] = []
+    impact: str | None = Field(default=None, max_length=2000)
+    project_url: str | None = Field(default=None, max_length=1000)
+    repo_url: str | None = Field(default=None, max_length=1000)
+    metric_bullets: list[str] = []
+    evidence_text: str | None = Field(default=None, max_length=4000)
+
+
+class ProfileProjectUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
+    technologies: list[str] | None = None
+    impact: str | None = Field(default=None, max_length=2000)
+    project_url: str | None = Field(default=None, max_length=1000)
+    repo_url: str | None = Field(default=None, max_length=1000)
+    metric_bullets: list[str] | None = None
+    evidence_text: str | None = Field(default=None, max_length=4000)
 
 
 class ProfileExperienceRead(BaseModel):
@@ -302,6 +340,29 @@ class CandidateProfileRead(BaseModel):
 
 class ProfileAgentRunRequest(BaseModel):
     document_id: UUID
+
+
+class PublicSourcePreferencesPatchRequest(BaseModel):
+    github_profile_url: str | None = None
+    portfolio_urls: list[str] = []
+
+
+class PublicSourcePreferencesRead(BaseModel):
+    github_profile_url: str | None = None
+    portfolio_urls: list[str] = []
+
+
+class SourceIngestionFailureRead(BaseModel):
+    source_type: str
+    source_url: str
+    reason: str
+
+
+class PublicSourceEnrichmentResponse(BaseModel):
+    profile: CandidateProfileRead
+    projects_added: int
+    projects_updated: int
+    failures: list[SourceIngestionFailureRead] = []
 
 
 class EmailAgentBatchRequest(BaseModel):
@@ -735,6 +796,14 @@ class ActionRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ActionCreateRequest(BaseModel):
+    action_type: ActionType = ActionType.SEND_FOLLOW_UP
+    title: str = Field(min_length=2, max_length=255)
+    details: str | None = Field(default=None, max_length=2000)
+    priority: str = Field(default="normal", max_length=50)
+    due_at: datetime | None = None
 
 
 class ActionUpdateRequest(BaseModel):

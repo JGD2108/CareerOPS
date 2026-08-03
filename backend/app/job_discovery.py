@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import crud
 from app.audit import write_audit_log
 from app.job_availability import derive_availability_from_payload, extract_job_source_dates
-from app.job_controls import is_job_dismissed
+from app.job_controls import is_excluded_company_name, is_job_dismissed
 from app.job_fit import ensure_job_score
 from app.models import Application, ApplicationStatus, Company, DiscoveryRun, DiscoverySource, Job, RawJob
 from app.profile_ingestion import get_profile
@@ -573,6 +573,8 @@ def discover_jobs(
         for source_config in sources:
             discovered_jobs = _fetch_jobs(client, source_config, include_description)
             for discovered_job in discovered_jobs:
+                if is_excluded_company_name(discovered_job.company_name):
+                    continue
                 if not _passes_filters(discovered_job, filters):
                     continue
                 if is_job_dismissed(

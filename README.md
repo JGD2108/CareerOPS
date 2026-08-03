@@ -156,6 +156,7 @@ This uses `text-embedding-3-small` to keep costs low.
 ## Documentation
 
 - Architecture: [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- Beginner crash course: [`docs/beginner-crash-course.md`](docs/beginner-crash-course.md)
 - Local desktop runbook: [`docs/LOCAL_DESKTOP.md`](docs/LOCAL_DESKTOP.md)
 - Gap tracking: [`docs/gap-tracking.md`](docs/gap-tracking.md)
 - Task board: [`docs/task-board.md`](docs/task-board.md)

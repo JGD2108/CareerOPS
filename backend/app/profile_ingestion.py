@@ -335,6 +335,7 @@ def extract_profile_from_latest_cv(db: Session) -> CandidateProfile:
             ProfileProject(
                 candidate_profile_id=profile.id,
                 source_document_id=document.id,
+                source_type=document.source_type,
                 **project,
             )
         )
@@ -477,6 +478,9 @@ def get_profile(db: Session) -> CandidateProfile | None:
         project.description = normalize_display_text(project.description)
         project.technologies = normalize_display_list(project.technologies)
         project.impact = normalize_display_text(project.impact)
+        project.project_url = normalize_display_text(project.project_url)
+        project.repo_url = normalize_display_text(project.repo_url)
+        project.metric_bullets = normalize_display_list(project.metric_bullets)
         project.evidence_text = normalize_display_text(project.evidence_text, fallback=project.evidence_text) or project.evidence_text
 
     for experience in profile.experiences:

@@ -287,17 +287,40 @@ def _compact_metric_phrase(value: str, max_words: int = 22) -> str:
     return " ".join(words[:max_words]).rstrip(".,;:") + "..."
 
 
+SECTION_NAME_ALIASES = {
+    "Summary": ["Summary", "Perfil", "Professional Summary", "Resumen"],
+    "Technical Skills": ["Technical Skills", "Habilidades T\\'ecnicas", "Habilidades Técnicas", "Skills"],
+    "Experience": ["Experience", "Experiencia", "Professional Experience", "Experiencia Profesional"],
+    "Selected Projects": ["Selected Projects", "Proyectos Seleccionados", "Projects", "Proyectos"],
+}
+
+
+def _section_names(section_name: str) -> list[str]:
+    return SECTION_NAME_ALIASES.get(section_name, [section_name])
+
+
+def _section_pattern(section_name: str, *, include_body: bool) -> re.Pattern[str]:
+    names = "|".join(re.escape(name) for name in _section_names(section_name))
+    if include_body:
+        return re.compile(
+            rf"(\\section\*?\{{(?:{names})\}})(.*?)(?=\\section\*?\{{|\\end\{{document\}})",
+            re.DOTALL,
+        )
+    return re.compile(
+        rf"(\\section\*?\{{(?:{names})\}}.*?)(?=\\section\*?\{{|\\end\{{document\}})",
+        re.DOTALL,
+    )
+
+
 def _replace_section(latex: str, section_name: str, new_content: str) -> str:
-    pattern = re.compile(rf"(\\section\{{{re.escape(section_name)}\}})(.*?)(?=\\section\{{|\\end\{{document\}})", re.DOTALL)
-    match = pattern.search(latex)
+    match = _section_pattern(section_name, include_body=True).search(latex)
     if not match:
         raise ValueError(f"Section not found in template: {section_name}")
     return latex[: match.start()] + new_content.rstrip() + "\n\n" + latex[match.end() :]
 
 
 def _extract_original_section(latex: str, section_name: str) -> str | None:
-    pattern = re.compile(rf"(\\section\{{{re.escape(section_name)}\}}.*?)(?=\\section\{{|\\end\{{document\}})", re.DOTALL)
-    match = pattern.search(latex)
+    match = _section_pattern(section_name, include_body=False).search(latex)
     if not match:
         return None
     return match.group(1).rstrip()
@@ -811,9 +834,22 @@ def _load_source_template(db: Session, cv_version: CVVersion) -> str:
         if cv_version.source_document_id
         else _latest_cv_template_document(db)
     )
+    if document and _is_latex_template(document.extracted_text):
+        return document.extracted_text
+    fallback_document = _latest_cv_template_document(db)
+    if fallback_document and _is_latex_template(fallback_document.extracted_text):
+        return fallback_document.extracted_text
+    if document and document.extracted_text:
+        raise ValueError("Source CV document is not a LaTeX template; using standalone rendering is required.")
     if not document or not document.extracted_text:
         raise ValueError("No source CV template document found.")
     return document.extracted_text
+
+
+def _is_latex_template(text: str | None) -> bool:
+    if not text:
+        return False
+    return "\\begin{document}" in text and "\\end{document}" in text and "\\section" in text
 
 
 def _render_summary_section(cv_version: CVVersion) -> str:
@@ -926,6 +962,62 @@ def _render_projects_section(cv_version: CVVersion) -> str:
     return "\\section{Selected Projects}\n  \\resumeSubHeadingListStart\n" + "\n\n".join(chunks) + "\n  \\resumeSubHeadingListEnd"
 
 
+def _render_standalone_final_latex(cv_version: CVVersion) -> str:
+    plan = cv_version.tailoring_plan
+    job = plan["job"]
+    score = plan["score"]
+    skills = [_clean_display_term(skill) for skill in plan.get("skills_to_prioritize", [])]
+    bullets = plan.get("experience_bullets_to_reuse", [])
+    projects = plan.get("projects_to_prioritize", [])
+    do_not_claim = plan.get("do_not_claim", [])
+
+    bullet_items = [f"{item['company']} - {item['bullet']}" for item in bullets]
+    project_items = [
+        f"{item['project']} - {_clean_display_sentence(item.get('why') or '')}"
+        for item in projects
+    ]
+
+    return f"""% CareerOps Agent final CV draft
+% Generated from verified profile sources and a human-reviewed tailoring plan.
+\\documentclass[letterpaper]{{article}}
+\\usepackage[margin=0.65in]{{geometry}}
+\\usepackage[hidelinks]{{hyperref}}
+
+\\begin{{document}}
+{_render_guardrail_comment(cv_version)}
+
+\\begin{{center}}
+{{\\Large Jose David Gomez}}\\\\
+{_escape_latex(job.get("title"))} at {_escape_latex(job.get("company"))}\\\\
+ATS score: {_escape_latex(str(score.get("score")))} / 100
+\\end{{center}}
+
+{_render_summary_section(cv_version)}
+
+\\section{{Technical Skills}}
+\\begin{{itemize}}
+{_itemize(skills)}
+\\end{{itemize}}
+
+\\section{{Experience}}
+\\begin{{itemize}}
+{_itemize(bullet_items)}
+\\end{{itemize}}
+
+\\section{{Selected Projects}}
+\\begin{{itemize}}
+{_itemize(project_items)}
+\\end{{itemize}}
+
+\\section{{Review Guardrails}}
+\\begin{{itemize}}
+{_itemize(do_not_claim)}
+\\end{{itemize}}
+
+\\end{{document}}
+"""
+
+
 def _render_guardrail_comment(cv_version: CVVersion) -> str:
     do_not_claim = cv_version.tailoring_plan.get("do_not_claim", [])
     if not do_not_claim:
@@ -969,18 +1061,24 @@ def generate_final_latex_from_plan(db: Session, cv_version_id: UUID) -> CVVersio
     if not cv_version:
         return None
 
-    template = _load_source_template(db, cv_version)
-    generated = template
-    job = cv_version.tailoring_plan.get("job", {})
-    if job.get("company"):
-        generated = _replace_def(generated, "targetcompany", str(job["company"]))
-    if job.get("title"):
-        generated = _replace_def(generated, "atsrole", str(job["title"]))
-    generated = _replace_section(generated, "Summary", _render_summary_section(cv_version))
-    generated = _replace_section(generated, "Technical Skills", _render_skills_section(cv_version))
-    generated = _replace_section(generated, "Experience", _render_experience_section(cv_version))
-    generated = _replace_section(generated, "Selected Projects", _render_projects_section(cv_version))
-    generated = generated.replace("\\begin{document}", "\\begin{document}\n" + _render_guardrail_comment(cv_version), 1)
+    try:
+        template = _load_source_template(db, cv_version)
+    except ValueError as error:
+        if "standalone rendering is required" not in str(error):
+            raise
+        generated = _render_standalone_final_latex(cv_version)
+    else:
+        generated = template
+        job = cv_version.tailoring_plan.get("job", {})
+        if job.get("company"):
+            generated = _replace_def(generated, "targetcompany", str(job["company"]))
+        if job.get("title"):
+            generated = _replace_def(generated, "atsrole", str(job["title"]))
+        generated = _replace_section(generated, "Summary", _render_summary_section(cv_version))
+        generated = _replace_section(generated, "Technical Skills", _render_skills_section(cv_version))
+        generated = _replace_section(generated, "Experience", _render_experience_section(cv_version))
+        generated = _replace_section(generated, "Selected Projects", _render_projects_section(cv_version))
+        generated = generated.replace("\\begin{document}", "\\begin{document}\n" + _render_guardrail_comment(cv_version), 1)
 
     output_dir = _storage_root() / "generated" / "cv_final_tex"
     output_dir.mkdir(parents=True, exist_ok=True)

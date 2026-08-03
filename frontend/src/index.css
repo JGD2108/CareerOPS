@@ -1,24 +1,32 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 :root {
-  --app-bg: #f6f7f5;
-  --app-bg-soft: #f9faf7;
-  --app-surface: rgba(255, 255, 252, 0.94);
-  --app-surface-strong: #ffffff;
-  --app-ink: #181b18;
-  --app-muted: #687067;
-  --app-border: rgba(24, 27, 24, 0.1);
-  --app-border-strong: rgba(24, 27, 24, 0.18);
-  --app-accent: #0f6b5f;
-  --app-accent-soft: rgba(15, 107, 95, 0.1);
-  --app-warning: #b45309;
-  --app-danger: #b42318;
+  --app-bg: #f5f3ee;
+  --app-bg-soft: #f8f7f3;
+  --app-surface: rgba(255, 255, 252, 0.9);
+  --app-surface-strong: #fffef9;
+  --app-ink: #232017;
+  --app-muted: #6d6658;
+  --app-border: rgba(35, 32, 23, 0.12);
+  --app-border-strong: rgba(35, 32, 23, 0.22);
+  --app-accent: #0f766e;
+  --app-accent-soft: rgba(15, 118, 110, 0.12);
+  --app-warning: #c2410c;
+  --app-danger: #be123c;
+  --app-radius: 16px;
+  --app-radius-sm: 12px;
+  --app-shadow-1: 0 10px 28px rgba(46, 37, 19, 0.08);
+  --app-shadow-2: 0 16px 44px rgba(46, 37, 19, 0.12);
   font-family:
-    "Aptos", "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif;
+    "Manrope", "Aptos", "Segoe UI", "SF Pro Text", sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: var(--app-ink);
-  background: linear-gradient(180deg, #fbfcfa 0%, #f2f4f1 100%);
+  background:
+    radial-gradient(circle at 15% 15%, rgba(15, 118, 110, 0.09), transparent 28%),
+    radial-gradient(circle at 85% 10%, rgba(194, 65, 12, 0.08), transparent 24%),
+    linear-gradient(180deg, #fbfaf7 0%, #f3f1eb 56%, #ebe8df 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -38,7 +46,7 @@ body,
 body {
   margin: 0;
   min-height: 100vh;
-  background: linear-gradient(180deg, #fbfcfa 0%, #f3f5f1 58%, #eef1ec 100%);
+  background: transparent;
 }
 
 button,
@@ -53,11 +61,11 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.26;
+  opacity: 0.2;
   background-image:
-    linear-gradient(rgba(24, 27, 24, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(24, 27, 24, 0.025) 1px, transparent 1px);
-  background-size: 28px 28px;
+    linear-gradient(rgba(55, 45, 26, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(55, 45, 26, 0.02) 1px, transparent 1px);
+  background-size: 30px 30px;
   mask-image: linear-gradient(180deg, white, rgba(255, 255, 255, 0.35));
 }
 
@@ -68,7 +76,7 @@ body::before {
 .crm-label {
   font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--app-muted);
 }
@@ -76,37 +84,144 @@ body::before {
 .crm-card {
   border: 1px solid var(--app-border);
   background: var(--app-surface-strong);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(24, 27, 24, 0.04);
+  border-radius: var(--app-radius-sm);
+  box-shadow: var(--app-shadow-1);
 }
 
 .crm-subcard {
   border: 1px solid var(--app-border);
   background: var(--app-bg-soft);
-  border-radius: 10px;
+  border-radius: var(--app-radius-sm);
 }
 
 .crm-button {
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 0.5rem 0.75rem;
   font-size: 0.8125rem;
   font-weight: 650;
-  transition: background-color 160ms ease, border-color 160ms ease, opacity 160ms ease;
+  transition: background-color 160ms ease, border-color 160ms ease, opacity 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.crm-button:hover {
+  transform: translateY(-1px);
+}
+
+.crm-button:active {
+  transform: translateY(0);
 }
 
 .crm-textarea,
 .crm-input,
 .crm-select {
   border: 1px solid var(--app-border-strong);
-  background: #fff;
-  border-radius: 10px;
+  background: #fffefb;
+  border-radius: 12px;
   color: var(--app-ink);
   outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
 }
 
 .crm-textarea:focus,
 .crm-input:focus,
 .crm-select:focus {
   border-color: var(--app-accent);
-  box-shadow: 0 0 0 3px rgba(15, 107, 95, 0.1);
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.18);
+  background: #ffffff;
+}
+
+h1,
+h2,
+h3 {
+  font-family: "Fraunces", "Georgia", serif;
+  letter-spacing: -0.01em;
+}
+
+.app-shell {
+  backdrop-filter: blur(6px);
+}
+
+.fade-up {
+  animation: fadeUp 420ms ease both;
+}
+
+.fade-up-delay-1 {
+  animation-delay: 70ms;
+}
+
+.fade-up-delay-2 {
+  animation-delay: 140ms;
+}
+
+.fade-up-delay-3 {
+  animation-delay: 210ms;
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, #f2efe7 0%, #e9e4d9 50%, #f2efe7 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.35s linear infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.app-header {
+  background:
+    radial-gradient(circle at 15% 18%, rgba(15, 118, 110, 0.35), transparent 38%),
+    linear-gradient(120deg, #1f1a14 0%, #2b251f 60%, #171410 100%);
+  border-radius: calc(var(--app-radius) + 4px);
+  box-shadow: var(--app-shadow-2);
+}
+
+.app-panel {
+  border-radius: var(--app-radius);
+}
+
+.app-nav {
+  border-radius: var(--app-radius);
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgba(15, 118, 110, 0.3);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .fade-up,
+  .fade-up-delay-1,
+  .fade-up-delay-2,
+  .fade-up-delay-3,
+  .skeleton {
+    animation: none !important;
+  }
 }

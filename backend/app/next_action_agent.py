@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
@@ -17,6 +17,7 @@ from app.models import (
     EmailCategory,
     Job,
 )
+from app.schemas import ActionCreateRequest
 
 
 TERMINAL_ACTION_STATUSES = {ActionStatus.COMPLETED, ActionStatus.DISMISSED}
@@ -66,6 +67,45 @@ def list_application_actions(db: Session, application_id: UUID) -> list[Action]:
     return _all_actions(db, application_id)
 
 
+def create_manual_action(
+    db: Session,
+    application_id: UUID,
+    payload: ActionCreateRequest,
+) -> Action | None:
+    application = db.get(Application, application_id)
+    if not application:
+        return None
+
+    action = Action(
+        application_id=application_id,
+        email_id=None,
+        action_key=f"manual:{application_id}:{uuid4()}",
+        action_type=payload.action_type,
+        status=ActionStatus.OPEN,
+        title=payload.title.strip(),
+        details=payload.details.strip() if payload.details else None,
+        priority=payload.priority.strip().lower() or "normal",
+        due_at=payload.due_at,
+    )
+    db.add(action)
+    db.flush()
+    write_audit_log(
+        db,
+        event_type="action.created_manual",
+        entity_type="action",
+        entity_id=action.id,
+        details={
+            "application_id": str(application_id),
+            "action_type": action.action_type,
+            "priority": action.priority,
+            "due_at": action.due_at.isoformat() if action.due_at else None,
+        },
+    )
+    db.commit()
+    db.refresh(action)
+    return action
+
+
 def update_action_status(
     db: Session,
     action_id: UUID,
@@ -98,6 +138,8 @@ def update_action_status(
 def _dismiss_stale_actions(open_actions: dict[str, Action], desired_keys: set[str]) -> None:
     now = _utcnow()
     for key, action in open_actions.items():
+        if key.startswith("manual:"):
+            continue
         if key not in desired_keys:
             action.status = ActionStatus.DISMISSED
             action.completed_at = now

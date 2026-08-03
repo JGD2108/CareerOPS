@@ -476,10 +476,14 @@ class ProfileProject(Base):
         ForeignKey("candidate_profile.id", ondelete="CASCADE"), nullable=False
     )
     source_document_id: Mapped[UUID | None] = mapped_column(ForeignKey("documents.id", ondelete="SET NULL"))
+    source_type: Mapped[SourceType | None] = mapped_column(Enum(SourceType, name="source_type"))
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     description: Mapped[str | None] = mapped_column(Text)
     technologies: Mapped[list | None] = mapped_column(JSONB)
     impact: Mapped[str | None] = mapped_column(Text)
+    project_url: Mapped[str | None] = mapped_column(String(1000))
+    repo_url: Mapped[str | None] = mapped_column(String(1000))
+    metric_bullets: Mapped[list | None] = mapped_column(JSONB)
     evidence_text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

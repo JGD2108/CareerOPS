@@ -12,6 +12,8 @@ RUN apt-get update \
         texlive-latex-base \
         texlive-latex-recommended \
         texlive-fonts-recommended \
+        texlive-latex-extra \
+        texlive-lang-spanish \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

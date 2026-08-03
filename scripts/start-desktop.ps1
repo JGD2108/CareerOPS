@@ -42,6 +42,14 @@ function Wait-ForDatabase {
     throw "PostgreSQL did not become ready. Check Docker Desktop and run: docker compose logs db"
 }
 
+function Stop-ComposeBackend {
+    $backendContainerId = docker compose ps -q backend
+    if ($backendContainerId) {
+        Write-Host "Stopping Docker backend so the desktop app uses the local FastAPI code..."
+        docker compose stop backend | Out-Null
+    }
+}
+
 function Wait-ForBackend {
     Write-Host "Waiting for FastAPI..."
     for ($i = 0; $i -lt 45; $i++) {
@@ -61,6 +69,7 @@ Copy-ExampleFile (Join-Path $BackendDir ".env.example") (Join-Path $BackendDir "
 Copy-ExampleFile (Join-Path $FrontendDir ".env.example") (Join-Path $FrontendDir ".env")
 
 docker compose up -d db
+Stop-ComposeBackend
 Wait-ForDatabase
 
 if (-not (Test-Path (Join-Path $BackendDir ".venv\Scripts\python.exe"))) {

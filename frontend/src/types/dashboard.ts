@@ -125,6 +125,11 @@ export type ProfileProject = {
   description: string | null
   technologies: string[] | null
   impact: string | null
+  project_url: string | null
+  repo_url: string | null
+  metric_bullets: string[] | null
+  source_type: string | null
+  source_document_id: string | null
   evidence_text: string
 }
 

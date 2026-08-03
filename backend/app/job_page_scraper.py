@@ -166,6 +166,8 @@ def _extract_visible_text(driver: Any) -> str:
 def scrape_job_page_with_selenium(url: str) -> ScrapedJobPage | None:
     if webdriver is None or ChromeOptions is None or By is None:
         return None
+    if "linkedin.com" in url.lower():
+        return None
 
     options = ChromeOptions()
     options.add_argument("--headless=new")

@@ -54,6 +54,8 @@ class EmailAgentState(TypedDict, total=False):
     email_id: str
     email: Email
     triage: AIEmailTriage
+    triage_model: str
+    triage_escalated: bool
 
 
 def _truncate_for_model(text: str) -> str:
@@ -402,14 +404,180 @@ def _load_email_for_agent(state: EmailAgentState, db: Session) -> EmailAgentStat
 
 def _triage_email_with_ai(state: EmailAgentState, _: Session) -> EmailAgentState:
     email = state["email"]
-    triage = triage_email_content_with_ai(
+    triage, model_used, escalated = triage_email_content_with_ai_routed(
         from_email=email.from_email,
         from_name=email.from_name,
         subject=email.subject,
         snippet=email.snippet,
         body_text=email.body_text,
     )
-    return {"triage": triage}
+    return {"triage": triage, "triage_model": model_used, "triage_escalated": escalated}
+
+
+_EMAIL_TRIAGE_ESCALATION_CATEGORIES = {
+    EmailCategory.APPLICATION_CONFIRMATION,
+    EmailCategory.INTERVIEW_INVITATION,
+    EmailCategory.CODING_ASSESSMENT,
+    EmailCategory.RECRUITER_FOLLOW_UP,
+    EmailCategory.REJECTION,
+    EmailCategory.OFFER,
+    EmailCategory.DOCUMENTS_REQUESTED,
+    EmailCategory.FORM_PENDING,
+}
+
+
+_EMAIL_TRIAGE_HIGH_IMPACT_CATEGORIES = {
+    EmailCategory.INTERVIEW_INVITATION,
+    EmailCategory.CODING_ASSESSMENT,
+    EmailCategory.REJECTION,
+    EmailCategory.OFFER,
+    EmailCategory.DOCUMENTS_REQUESTED,
+    EmailCategory.FORM_PENDING,
+}
+
+
+def _email_triage_prompts(
+    *,
+    from_email: str,
+    from_name: str | None = None,
+    subject: str | None = None,
+    snippet: str | None = None,
+    body_text: str | None = None,
+) -> tuple[str, str]:
+    system_prompt = (
+        "You are the Email Monitoring Agent for CareerOps. "
+        "Read one email at a time and classify only its relevance for the candidate's job search. "
+        "Do not invent company names, roles, or statuses. "
+        "If the email is marketing, security, newsletters, or unrelated account activity, mark it as not relevant_to_careerops and category other. "
+        "If the email clearly refers to a job application, recruiter follow-up, interview, assessment, rejection, offer, documents requested, or form pending, classify it accordingly. "
+        "For ATS relay senders, infer the company only from explicit sender subdomains, sender names, subject lines, or body text. "
+        "Set confidence from 0 to 100 based on how explicit the evidence is; use lower confidence when the email could be a digest, marketing update, or ambiguous status update."
+    )
+    user_prompt = (
+        f"From: {from_email}\n"
+        f"From name: {from_name or ''}\n"
+        f"Subject: {subject or ''}\n"
+        f"Snippet: {snippet or ''}\n"
+        f"Body: {_truncate_for_model(body_text or '')}\n"
+    )
+    return system_prompt, user_prompt
+
+
+def _run_email_triage_model(
+    *,
+    model_name: str,
+    system_prompt: str,
+    user_prompt: str,
+) -> AIEmailTriage:
+    return generate_structured_output(
+        schema_model=AIEmailTriage,
+        schema_name="careerops_email_triage",
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        model=model_name,
+    )
+
+
+def _should_escalate_email_triage(
+    triage: AIEmailTriage,
+    *,
+    deterministic_category: EmailCategory,
+) -> bool:
+    if triage.confidence < 80:
+        return True
+
+    if (
+        deterministic_category in _EMAIL_TRIAGE_ESCALATION_CATEGORIES
+        and (not triage.relevant_to_careerops or triage.category != deterministic_category)
+    ):
+        return True
+
+    if triage.category in _EMAIL_TRIAGE_HIGH_IMPACT_CATEGORIES and triage.confidence < 90:
+        return True
+
+    if (
+        triage.category in _EMAIL_TRIAGE_ESCALATION_CATEGORIES
+        and triage.relevant_to_careerops
+        and not triage.company_name
+        and triage.confidence < 90
+    ):
+        return True
+
+    return False
+
+
+def _choose_email_triage_result(
+    primary: AIEmailTriage,
+    fallback: AIEmailTriage,
+    *,
+    deterministic_category: EmailCategory,
+) -> AIEmailTriage:
+    if deterministic_category in _EMAIL_TRIAGE_ESCALATION_CATEGORIES:
+        if fallback.category == deterministic_category and fallback.confidence >= 70:
+            return fallback
+        if primary.category == deterministic_category:
+            return primary
+
+    if (
+        primary.category in _EMAIL_TRIAGE_HIGH_IMPACT_CATEGORIES
+        and fallback.category == EmailCategory.OTHER
+        and fallback.confidence < 95
+    ):
+        return primary
+
+    if fallback.confidence >= primary.confidence + 10:
+        return fallback
+    if primary.category == EmailCategory.OTHER and fallback.category != EmailCategory.OTHER and fallback.confidence >= 70:
+        return fallback
+    if not primary.relevant_to_careerops and fallback.relevant_to_careerops and fallback.confidence >= 70:
+        return fallback
+    if not primary.company_name and fallback.company_name and fallback.confidence >= primary.confidence:
+        return fallback
+    return primary
+
+
+def triage_email_content_with_ai_routed(
+    *,
+    from_email: str,
+    from_name: str | None = None,
+    subject: str | None = None,
+    snippet: str | None = None,
+    body_text: str | None = None,
+) -> tuple[AIEmailTriage, str, bool]:
+    require_ai_agents_enabled()
+    system_prompt, user_prompt = _email_triage_prompts(
+        from_email=from_email,
+        from_name=from_name,
+        subject=subject,
+        snippet=snippet,
+        body_text=body_text,
+    )
+    primary_model = settings.openai_email_model
+    escalation_model = settings.openai_email_escalation_model
+    deterministic_category, _, _, _ = _classify_email(subject, body_text or snippet, from_email)
+
+    primary = _run_email_triage_model(
+        model_name=primary_model,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+    )
+    if escalation_model == primary_model or not _should_escalate_email_triage(
+        primary,
+        deterministic_category=deterministic_category,
+    ):
+        return primary, primary_model, False
+
+    fallback = _run_email_triage_model(
+        model_name=escalation_model,
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+    )
+    chosen = _choose_email_triage_result(
+        primary,
+        fallback,
+        deterministic_category=deterministic_category,
+    )
+    return chosen, escalation_model if chosen is fallback else primary_model, True
 
 
 def triage_email_content_with_ai(
@@ -420,28 +588,14 @@ def triage_email_content_with_ai(
     snippet: str | None = None,
     body_text: str | None = None,
 ) -> AIEmailTriage:
-    require_ai_agents_enabled()
-    system_prompt = (
-        "You are the Email Monitoring Agent for CareerOps. "
-        "Read one email at a time and classify only its relevance for the candidate's job search. "
-        "Do not invent company names, roles, or statuses. "
-        "If the email is marketing, security, newsletters, or unrelated account activity, mark it as not relevant_to_careerops and category other. "
-        "If the email clearly refers to a job application, recruiter follow-up, interview, assessment, rejection, offer, documents requested, or form pending, classify it accordingly."
+    triage, _, _ = triage_email_content_with_ai_routed(
+        from_email=from_email,
+        from_name=from_name,
+        subject=subject,
+        snippet=snippet,
+        body_text=body_text,
     )
-    user_prompt = (
-        f"From: {from_email}\n"
-        f"From name: {from_name or ''}\n"
-        f"Subject: {subject or ''}\n"
-        f"Snippet: {snippet or ''}\n"
-        f"Body: {_truncate_for_model(body_text or '')}\n"
-    )
-    return generate_structured_output(
-        schema_model=AIEmailTriage,
-        schema_name="careerops_email_triage",
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        model=settings.openai_email_model,
-    )
+    return triage
 
 
 def _persist_email_triage(state: EmailAgentState, db: Session) -> EmailAgentState:
@@ -486,6 +640,9 @@ def _persist_email_triage(state: EmailAgentState, db: Session) -> EmailAgentStat
             "category": email.category,
             "company_name": email.company_name,
             "application_id": str(email.application_id) if email.application_id else None,
+            "confidence": triage.confidence,
+            "model": state.get("triage_model"),
+            "escalated": state.get("triage_escalated", False),
             "reasoning": triage.reasoning,
         },
     )

@@ -23,14 +23,16 @@ CORS_ORIGINS=https://your-frontend-domain.example
 LOCAL_STORAGE_DIR=/storage
 APP_AUTH_ENABLED=true
 APP_API_KEY=generate-a-long-random-secret
+ENABLE_BROWSER_JOB_CHECKS=false
 ```
 
 Frontend:
 
 ```text
 VITE_API_BASE_URL=https://your-backend-domain.example/api/v1
-VITE_CAREEROPS_API_KEY=same-value-as-APP_API_KEY
 ```
+
+For deployed private web use, the frontend prompts for `APP_API_KEY` once and exchanges it for an HttpOnly session cookie through `/api/v1/auth/login`. Do not bundle the private app key into Vite environment variables.
 
 ## Local Docker Run
 
@@ -132,3 +134,4 @@ Scheduler:
 - [ ] Backups enabled for PostgreSQL.
 - [ ] Generated CV artifacts stored in private storage.
 - [ ] CI passes for backend tests and frontend build.
+- [ ] `ENABLE_BROWSER_JOB_CHECKS` remains `false` unless browser-based public job checks are explicitly needed; LinkedIn URLs are never browser-scraped.

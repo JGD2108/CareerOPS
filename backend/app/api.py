@@ -1,11 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app import crud
-from app.auth import auth_status, require_app_auth
+from app.auth import auth_status, clear_auth_cookie, require_app_auth, set_auth_cookie
 from app.config import get_settings
 from app.application_tracker import (
     build_application_summary,
@@ -45,7 +45,7 @@ from app.gmail_integration import (
     start_gmail_web_oauth,
     store_gmail_credentials_file,
 )
-from app.next_action_agent import list_actions, list_application_actions, sync_next_actions, update_action_status
+from app.next_action_agent import create_manual_action, list_actions, list_application_actions, sync_next_actions, update_action_status
 from app.notification_agent import generate_daily_summary, list_notification_summaries
 from app.portal_credentials import (
     create_portal_credential,
@@ -86,7 +86,9 @@ from app.langgraph_agents import run_email_triage_agent, run_profile_ingestion_a
 from app.message_agent import generate_message_drafts, list_message_drafts, review_message_draft
 from app.models import SourceType
 from app.models import ActionStatus
+from app.models import CandidateProfile, ProfileProject, ProfileSource
 from app.profile_ingestion import extract_profile_from_latest_cv, get_profile
+from app.public_profile_enrichment import enrich_profile_from_public_sources, save_public_source_preferences
 from app.models import AuditLog
 from sqlalchemy import select
 from app.schemas import (
@@ -96,9 +98,12 @@ from app.schemas import (
     ApplicationStatusCheckEventRead,
     ApplicationTrackerRead,
     ApplicationUpdate,
+    ActionCreateRequest,
     ActionRead,
     AgentRunRead,
     ActionUpdateRequest,
+    AuthLoginRequest,
+    AuthStatusRead,
     CandidateProfileRead,
     CVTailoringPlanRead,
     CVVersionReviewRequest,
@@ -146,20 +151,65 @@ from app.schemas import (
     PortalCredentialRead,
     PortalCredentialUpdate,
     ProfileAgentRunRequest,
+    ProfileProjectCreateRequest,
+    ProfileProjectUpdateRequest,
+    PublicSourceEnrichmentResponse,
+    PublicSourcePreferencesPatchRequest,
+    PublicSourcePreferencesRead,
     ProfileSkillAliasRead,
     RawEmailRead,
     RawJobRead,
     ResolvePendingDescriptionsResponse,
     SchedulerStatusRead,
     SemanticMatchRead,
+    SourceIngestionFailureRead,
 )
 
+settings = get_settings()
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_app_auth)])
 
 
 @router.get("/auth/status")
-def read_auth_status() -> dict[str, bool]:
-    return auth_status()
+def read_auth_status(request: Request) -> AuthStatusRead:
+    return AuthStatusRead.model_validate(
+        auth_status(
+            session_cookie=request.cookies.get(settings.app_session_cookie_name),
+            client_host=request.client.host if request.client else None,
+        )
+    )
+
+
+@router.post("/auth/login", response_model=AuthStatusRead)
+def login(payload: AuthLoginRequest, request: Request, response: Response) -> AuthStatusRead:
+    if not settings.app_auth_enabled:
+        return read_auth_status(request)
+    if not settings.app_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="APP_AUTH_ENABLED is true but APP_API_KEY is not configured.",
+        )
+    if payload.app_key != settings.app_api_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid CareerOps app key.")
+    set_auth_cookie(response)
+    return AuthStatusRead.model_validate(
+        {
+            "enabled": settings.app_auth_enabled,
+            "configured": True,
+            "authenticated": True,
+            "mode": "session",
+        }
+    )
+
+
+@router.post("/auth/logout", response_model=AuthStatusRead)
+def logout(request: Request, response: Response) -> AuthStatusRead:
+    clear_auth_cookie(response)
+    return AuthStatusRead.model_validate(
+        {
+            **auth_status(client_host=request.client.host if request.client else None),
+            "authenticated": False if settings.app_auth_enabled else True,
+        }
+    )
 
 
 @router.post("/jobs", response_model=JobRead, status_code=status.HTTP_201_CREATED)
@@ -412,6 +462,149 @@ def read_profile(db: Session = Depends(get_db)) -> CandidateProfileRead | None:
     if not profile:
         return None
     return profile
+
+
+def _get_or_create_candidate_profile_for_manual_project(db: Session) -> CandidateProfile:
+    profile = db.scalar(select(CandidateProfile).order_by(CandidateProfile.created_at.asc()))
+    if profile:
+        return profile
+    profile = CandidateProfile(preferences={"profile_origin": "manual"})
+    db.add(profile)
+    db.flush()
+    return profile
+
+
+def _clean_list(values: list[str] | None) -> list[str]:
+    return [item.strip() for item in values or [] if item.strip()]
+
+
+@router.post("/profile/projects", response_model=CandidateProfileRead, status_code=status.HTTP_201_CREATED)
+def create_profile_project(payload: ProfileProjectCreateRequest, db: Session = Depends(get_db)) -> CandidateProfileRead:
+    profile = _get_or_create_candidate_profile_for_manual_project(db)
+    evidence_text = payload.evidence_text or "Manual project entry."
+    project = ProfileProject(
+        candidate_profile_id=profile.id,
+        source_document_id=None,
+        source_type=SourceType.MANUAL,
+        name=payload.name.strip(),
+        description=payload.description.strip() if payload.description else None,
+        technologies=_clean_list(payload.technologies),
+        impact=payload.impact.strip() if payload.impact else None,
+        project_url=payload.project_url.strip() if payload.project_url else None,
+        repo_url=payload.repo_url.strip() if payload.repo_url else None,
+        metric_bullets=_clean_list(payload.metric_bullets),
+        evidence_text=evidence_text,
+    )
+    db.add(project)
+    db.flush()
+    db.add(
+        ProfileSource(
+            candidate_profile_id=profile.id,
+            document_id=None,
+            source_type=SourceType.MANUAL,
+            field_name="profile_projects",
+            extracted_value={
+                "name": project.name,
+                "description": project.description,
+                "technologies": project.technologies,
+                "impact": project.impact,
+                "project_url": project.project_url,
+                "repo_url": project.repo_url,
+                "metric_bullets": project.metric_bullets,
+            },
+            evidence_text=evidence_text,
+            confidence=100,
+        )
+    )
+    db.commit()
+    refreshed = get_profile(db)
+    if not refreshed:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Profile could not be loaded.")
+    return refreshed
+
+
+@router.patch("/profile/projects/{project_id}", response_model=CandidateProfileRead)
+def update_profile_project(
+    project_id: UUID, payload: ProfileProjectUpdateRequest, db: Session = Depends(get_db)
+) -> CandidateProfileRead:
+    project = db.get(ProfileProject, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile project not found")
+    if payload.name is not None:
+        project.name = payload.name.strip()
+    if payload.description is not None:
+        project.description = payload.description.strip() or None
+    if payload.technologies is not None:
+        project.technologies = _clean_list(payload.technologies)
+    if payload.impact is not None:
+        project.impact = payload.impact.strip() or None
+    if payload.project_url is not None:
+        project.project_url = payload.project_url.strip() or None
+    if payload.repo_url is not None:
+        project.repo_url = payload.repo_url.strip() or None
+    if payload.metric_bullets is not None:
+        project.metric_bullets = _clean_list(payload.metric_bullets)
+    if payload.evidence_text is not None:
+        project.evidence_text = payload.evidence_text.strip() or project.evidence_text
+    db.commit()
+    refreshed = get_profile(db)
+    if not refreshed:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Profile could not be loaded.")
+    return refreshed
+
+
+@router.delete("/profile/projects/{project_id}", response_model=CandidateProfileRead)
+def delete_profile_project(project_id: UUID, db: Session = Depends(get_db)) -> CandidateProfileRead:
+    project = db.get(ProfileProject, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile project not found")
+    db.delete(project)
+    db.commit()
+    refreshed = get_profile(db)
+    if not refreshed:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Profile could not be loaded.")
+    return refreshed
+
+
+@router.patch("/profile/preferences/public-sources", response_model=PublicSourcePreferencesRead)
+def patch_public_source_preferences(
+    payload: PublicSourcePreferencesPatchRequest, db: Session = Depends(get_db)
+) -> PublicSourcePreferencesRead:
+    profile = save_public_source_preferences(
+        db,
+        github_profile_url=payload.github_profile_url,
+        portfolio_urls=payload.portfolio_urls,
+    )
+    preferences = profile.preferences or {}
+    return PublicSourcePreferencesRead(
+        github_profile_url=preferences.get("github_profile_url")
+        if isinstance(preferences.get("github_profile_url"), str)
+        else None,
+        portfolio_urls=[item for item in preferences.get("portfolio_urls", []) if isinstance(item, str)]
+        if isinstance(preferences.get("portfolio_urls"), list)
+        else [],
+    )
+
+
+@router.post("/agents/profile/enrich-public-sources", response_model=PublicSourceEnrichmentResponse)
+def enrich_public_sources(db: Session = Depends(get_db)) -> PublicSourceEnrichmentResponse:
+    try:
+        profile, result = enrich_profile_from_public_sources(db)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    return PublicSourceEnrichmentResponse(
+        profile=profile,
+        projects_added=result.projects_added,
+        projects_updated=result.projects_updated,
+        failures=[
+            SourceIngestionFailureRead(
+                source_type=item.source_type,
+                source_url=item.source_url,
+                reason=item.reason,
+            )
+            for item in result.failures
+        ],
+    )
 
 
 @router.get("/agents/triage-audit")
@@ -855,6 +1048,18 @@ def read_application_actions(application_id: UUID, db: Session = Depends(get_db)
     return list_application_actions(db, application_id)
 
 
+@router.post("/applications/{application_id}/actions", response_model=ActionRead, status_code=status.HTTP_201_CREATED)
+def create_application_action(
+    application_id: UUID,
+    payload: ActionCreateRequest,
+    db: Session = Depends(get_db),
+) -> ActionRead:
+    action = create_manual_action(db, application_id, payload)
+    if not action:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    return action
+
+
 @router.get("/actions", response_model=list[ActionRead])
 def read_actions(action_status: str | None = None, db: Session = Depends(get_db)) -> list[ActionRead]:
     parsed_status = None
@@ -979,7 +1184,10 @@ def generate_cv_final_latex(cv_version_id: UUID, db: Session = Depends(get_db)) 
     try:
         cv_version = generate_final_latex_from_plan(db, cv_version_id)
     except ValueError as error:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unable to generate final CV from the current template. {error}",
+        ) from error
     if not cv_version:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CV version not found")
     return cv_version

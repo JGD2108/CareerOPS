@@ -64,6 +64,7 @@ class AIEmailTriage(BaseModel):
     company_name: str | None = Field(default=None, max_length=255)
     role_hint: str | None = Field(default=None, max_length=255)
     status_hint: ApplicationStatus | None = None
+    confidence: int = Field(default=75, ge=0, le=100)
     urgency: str = Field(default="normal", max_length=50)
     requires_reply: bool = False
     suggested_action: str = Field(min_length=1)

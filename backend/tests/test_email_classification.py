@@ -4,6 +4,8 @@ from app.gmail_integration import (
     _category_allows_application_link,
     _classify_email,
     _default_reply_body,
+    _extract_company_name,
+    _extract_application_role_company_from_email,
     _infer_email_language,
     _is_job_inbox_email,
     _is_target_role,
@@ -61,6 +63,39 @@ def test_rejection_email_updates_tracker_guidance():
     assert urgency == "normal"
     assert requires_reply is False
     assert "rejected" in suggested_action.lower()
+
+
+def test_urrly_breezy_rejection_is_classified_and_company_is_not_breezy() -> None:
+    category, urgency, requires_reply, suggested_action = _classify_email(
+        subject="Re: Urrly opportunity",
+        body_text=(
+            "Hi Jose, thanks for applying for the AI-Enabled Software Engineer position. "
+            "There were a few candidates whose experience aligned a bit more with what our client is looking for."
+        ),
+        from_email="candidate-0cfec3531cc3@urrly.breezy-mail.com",
+    )
+
+    assert category == EmailCategory.REJECTION
+    assert urgency == "normal"
+    assert requires_reply is False
+    assert "rejected" in suggested_action.lower()
+    assert _extract_company_name("candidate-0cfec3531cc3@urrly.breezy-mail.com", "Rupam Patra") == "Urrly"
+
+
+def test_scotiatech_rejection_extracts_scotiatech_not_unrelated_company() -> None:
+    email = SimpleNamespace(
+        subject="Your application for the role of Software Engineer Associate- ScotiaTech at Scotiabank",
+        snippet=None,
+        body_text=(
+            "Thank you for taking the time to apply to the role of Software Engineer Associate- ScotiaTech. "
+            "We regret to inform you that the role of Software Engineer Associate- ScotiaTech has been closed."
+        ),
+    )
+
+    title, company = _extract_application_role_company_from_email(email)
+
+    assert title == "Software Engineer Associate- ScotiaTech"
+    assert company == "ScotiaTech"
 
 
 def test_spanish_linkedin_profile_mismatch_is_rejection():

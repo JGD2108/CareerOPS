@@ -11,10 +11,25 @@ export async function requestApi<T>(path: string, init?: RequestInit): Promise<T
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers,
+    credentials: init?.credentials ?? 'include',
   })
 
   if (!response.ok) {
-    const error = new Error(`Request failed with status ${response.status}`)
+    let message = `Request failed with status ${response.status}`
+    try {
+      const payload = await response.json()
+      if (typeof payload?.detail === 'string') {
+        message = payload.detail
+      } else if (Array.isArray(payload?.detail)) {
+        message = payload.detail
+          .map((item: { msg?: string }) => item.msg)
+          .filter(Boolean)
+          .join('; ') || message
+      }
+    } catch {
+      // Keep the generic status message if the backend did not return JSON.
+    }
+    const error = new Error(message)
     ;(error as Error & { status?: number }).status = response.status
     throw error
   }
